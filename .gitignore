@@ -1,0 +1,10 @@
+# macOS Finder metadata - written into any folder that gets opened
+.DS_Store
+
+# Word lock files and crash-recovery leftovers
+~$*
+~WRL*.tmp
+
+# Build artefacts, all regenerable by the scripts in Scripts/
+Drafts/
+Published/*.docx.tmp
