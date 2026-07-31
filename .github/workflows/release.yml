@@ -192,7 +192,16 @@ jobs:
           Copy-Item App/MCAANewsletter/assets/Square150x150Logo.png "$layout/Images/"
           Copy-Item App/MCAANewsletter/assets/StoreLogo.png         "$layout/Images/"
           (Get-Content App/MCAANewsletter/msix/AppxManifest.xml -Raw) -replace '@VERSION@', $ver4 | Set-Content -NoNewline "$layout/AppxManifest.xml"
-          (Get-Content App/MCAANewsletter/msix/MCAANewsletter.appinstaller -Raw) -replace '@VERSION@', $ver4 | Set-Content -NoNewline "dist/MCAANewsletter.appinstaller"
+
+          # @BASEURL@ is where App Installer will look for updates, and it is
+          # baked into every installed copy - an empty or wrong value produces a
+          # package that installs fine and then never updates, which is the kind
+          # of fault that surfaces months later. Fail here instead.
+          $base = "${{ vars.AZURE_DOWNLOAD_BASE_URL }}".TrimEnd('/')
+          if (-not $base) { throw "Repo variable AZURE_DOWNLOAD_BASE_URL is not set. It must be the public base URL of the blob container holding the packages, e.g. https://<account>.blob.core.windows.net/<container> - see RELEASING.md." }
+          if ($base -notmatch '^https://') { throw "AZURE_DOWNLOAD_BASE_URL must start with https:// (got '$base'). App Installer refuses plain HTTP." }
+          Write-Host "Update base URL: $base"
+          (Get-Content App/MCAANewsletter/msix/MCAANewsletter.appinstaller -Raw) -replace '@VERSION@', $ver4 -replace '@BASEURL@', $base | Set-Content -NoNewline "dist/MCAANewsletter.appinstaller"
 
       - name: Pack MSIX (makeappx)
         shell: pwsh

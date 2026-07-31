@@ -1,11 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   App Installer file. The Windows release job substitutes @VERSION@ (4-part:
-  csproj X.Y.Z -> X.Y.Z.0) and uploads this alongside the signed .msix.
+  csproj X.Y.Z -> X.Y.Z.0) and @BASEURL@ (the AZURE_DOWNLOAD_BASE_URL repo
+  variable, no trailing slash), then uploads this alongside the signed .msix.
 
-  Hosted at the stable .../releases/latest/download/MCAANewsletter.appinstaller
-  URL, so the draft -> human-review -> publish flow IS the release gate: a draft
-  release is not "latest", so it never advertises an update.
+  Why not GitHub Releases: this repo is private, and App Installer fetches these
+  URLs anonymously - it is a Windows component with no GitHub credentials, so a
+  private repo's release assets 404 for it. The packages are therefore mirrored
+  to public-read Azure Blob Storage and @BASEURL@ points there. Hosting them
+  outside GitHub costs nothing in trust: the anchor is the .msix's Authenticode
+  signature, which Windows verifies before installing regardless of where the
+  bytes came from.
+
+  Both blob names are STABLE and overwritten each release, so this URL keeps
+  working the way GitHub's .../releases/latest/download/ did. The upload runs on
+  the `release: published` event (.github/workflows/publish.yml), so the
+  draft -> human-review -> publish flow is still the release gate: nothing
+  reaches the blob, and so nothing is offered as an update, until you click
+  Publish on the draft.
 
   UpdateSettings/OnLaunch with HoursBetweenUpdateChecks="0" means Windows checks
   on every launch and installs quietly in the background. This is deliberate:
@@ -18,13 +30,13 @@
 <AppInstaller
     xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
     Version="@VERSION@"
-    Uri="https://github.com/Circuit-Stitch/newsletter-helper/releases/latest/download/MCAANewsletter.appinstaller">
+    Uri="@BASEURL@/MCAANewsletter.appinstaller">
   <MainPackage
       Name="com.circuitstitch.apps.mcaanewsletter"
       Publisher="CN=Circuit Stitch, O=Circuit Stitch, L=West Sacramento, S=California, C=US"
       Version="@VERSION@"
       ProcessorArchitecture="x64"
-      Uri="https://github.com/Circuit-Stitch/newsletter-helper/releases/latest/download/MCAANewsletter.msix" />
+      Uri="@BASEURL@/MCAANewsletter.msix" />
   <UpdateSettings>
     <OnLaunch HoursBetweenUpdateChecks="0" />
   </UpdateSettings>

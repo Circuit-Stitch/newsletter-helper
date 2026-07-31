@@ -41,10 +41,14 @@ The app ships as a signed **MSIX**, installed through a companion
 1. Copy the newsletter folder — `Drafts/`, `Published/`, `Template/` — anywhere
    on her machine. Her Desktop is fine. **Not** the USB stick: it is FAT32 with
    no journaling and already had Word crash-recovery leftovers on it.
-2. From the [latest release](https://github.com/Circuit-Stitch/newsletter-helper/releases/latest),
-   download **`MCAANewsletter.appinstaller`** and open it. Install from that, not
-   from the `.msix` — the `.msix` installs the app once but does not wire up
-   updates.
+2. Send her the **`MCAANewsletter.appinstaller`** link — the value of the
+   `AZURE_DOWNLOAD_BASE_URL` repo variable with `/MCAANewsletter.appinstaller` on
+   the end — and have her open it. Install from that, not from the `.msix`: the
+   `.msix` installs the app once but does not wire up updates.
+
+   Not from the GitHub Release: this repo is private, so its release assets are
+   not downloadable without a GitHub account. The packages are mirrored to public
+   Azure Blob Storage when a release is published — see [RELEASING.md](../RELEASING.md).
 3. Open **MCAA Newsletter** from the Start menu. It asks which folder the
    newsletters are in; point it at the one from step 1.
 

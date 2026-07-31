@@ -1,0 +1,124 @@
+# Mirror a published release's packages to public Azure Blob Storage.
+#
+# This repo is PRIVATE, and App Installer fetches update URLs anonymously - it is
+# a Windows component with no GitHub credentials, so a private repo's release
+# assets 404 for it. Both the update check and the very first install would fail.
+# So the GitHub Release stays the archive and the review gate, and the blob
+# container is the distribution channel.
+#
+# Trust is unaffected by moving the bytes off GitHub: the anchor is the .msix's
+# Authenticode signature from Artifact Signing, which Windows verifies before
+# installing whatever the host. The container needs only anonymous READ; nothing
+# secret is published, and the signature is what makes the package trustworthy
+# rather than the URL it came from.
+#
+# WHY THIS IS A SEPARATE WORKFLOW ON `release: published`: release.yml ends at a
+# DRAFT for human review. If it uploaded to the blob itself, the update would go
+# live before anyone looked at it, and the draft would be theatre. Clicking
+# Publish on the draft is what fires this - so the review gate is preserved
+# exactly as it was when the packages lived on GitHub Releases.
+#
+# The blob names are STABLE and overwritten every release, which is what makes
+# the URL baked into installed copies keep working - the same trick GitHub's
+# .../releases/latest/download/ was doing.
+name: Publish packages
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: publish-packages
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Upload to Blob Storage
+    runs-on: ubuntu-latest
+    # Same environment as the signing job, so the SAME federated credential
+    # (subject repo:...:environment:release) covers this too - no second Azure
+    # identity to manage.
+    environment: release
+    permissions:
+      id-token: write     # OIDC for azure/login
+      contents: read      # gh release download
+    steps:
+      # Draft releases never fire `published`, so reaching here means a human
+      # clicked Publish. Guard the config anyway: a missing variable here would
+      # silently upload nothing and leave clients on the old version.
+      - name: Check configuration
+        env:
+          ACCOUNT: ${{ vars.AZURE_STORAGE_ACCOUNT }}
+          CONTAINER: ${{ vars.AZURE_STORAGE_CONTAINER }}
+        run: |
+          set -euo pipefail
+          [ -n "${ACCOUNT}" ]   || { echo "::error::Repo variable AZURE_STORAGE_ACCOUNT is not set - see RELEASING.md."; exit 1; }
+          [ -n "${CONTAINER}" ] || { echo "::error::Repo variable AZURE_STORAGE_CONTAINER is not set - see RELEASING.md."; exit 1; }
+
+      - name: Download the release packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "$TAG" --repo "${{ github.repository }}" --dir dist \
+            --pattern '*.msix' --pattern '*.appinstaller'
+          ls -l dist
+          # A release with no packages means the signing job was skipped or its
+          # upload was gated off. Publishing that would be a no-op that looks
+          # like success.
+          [ -f dist/MCAANewsletter.msix ]         || { echo "::error::No MCAANewsletter.msix on release $TAG. Was WINDOWS_SIGNING_ENABLED set when it was built?"; exit 1; }
+          [ -f dist/MCAANewsletter.appinstaller ] || { echo "::error::No MCAANewsletter.appinstaller on release $TAG."; exit 1; }
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Content types are set explicitly. Azure defaults uploads to
+      # application/octet-stream, and App Installer is documented to want
+      # application/appinstaller for the manifest - a browser handed
+      # octet-stream tends to save the file rather than hand it to App
+      # Installer, which turns a one-click install into a confusing download.
+      #
+      # --auth-mode login uses the OIDC identity above (needs Storage Blob Data
+      # Contributor on the container), so no storage account key is ever stored.
+      #
+      # ORDER MATTERS: .msix first. The .appinstaller is the pointer clients
+      # read; publishing it before the package it names would leave a window
+      # where a launching client is told about a version it cannot download.
+      - name: Upload packages
+        env:
+          ACCOUNT: ${{ vars.AZURE_STORAGE_ACCOUNT }}
+          CONTAINER: ${{ vars.AZURE_STORAGE_CONTAINER }}
+        run: |
+          set -euo pipefail
+          az storage blob upload \
+            --account-name "$ACCOUNT" --container-name "$CONTAINER" \
+            --file dist/MCAANewsletter.msix --name MCAANewsletter.msix \
+            --content-type 'application/msix' \
+            --overwrite --auth-mode login
+          az storage blob upload \
+            --account-name "$ACCOUNT" --container-name "$CONTAINER" \
+            --file dist/MCAANewsletter.appinstaller --name MCAANewsletter.appinstaller \
+            --content-type 'application/appinstaller' \
+            --overwrite --auth-mode login
+
+      # Fetch back anonymously - the only check that actually proves the thing
+      # clients depend on. RBAC, container access level and content type can all
+      # be individually correct while the blob is still not publicly readable.
+      - name: Verify the packages are publicly readable
+        env:
+          BASE: ${{ vars.AZURE_DOWNLOAD_BASE_URL }}
+        run: |
+          set -euo pipefail
+          base="${BASE%/}"
+          for f in MCAANewsletter.appinstaller MCAANewsletter.msix; do
+            code="$(curl -sS -o /dev/null -w '%{http_code}' "$base/$f")"
+            echo "$f -> HTTP $code"
+            [ "$code" = "200" ] || { echo "::error::$base/$f is not anonymously readable (HTTP $code). Clients update from this URL, so this must be 200 - check the container's anonymous access level."; exit 1; }
+          done
+          echo "Published. Clients will pick this up on next launch."

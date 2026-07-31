@@ -2,10 +2,32 @@
 
 The app ships as a **signed MSIX** with a companion `.appinstaller`. Windows'
 built-in App Installer does the updating: once she has installed from the
-`.appinstaller` URL, it checks the release page on every launch and installs a
-new version in the background. **Publishing the draft GitHub Release is the
-entire release action** — there is nothing to tell her and nothing for her to
-click.
+`.appinstaller` URL, it checks that URL on every launch and installs a new
+version in the background. **Publishing the draft GitHub Release is the entire
+release action** — there is nothing to tell her and nothing for her to click.
+
+The packages are served from **public Azure Blob Storage**, not GitHub Releases,
+because this repo is private. App Installer is a Windows component with no GitHub
+credentials and fetches update URLs anonymously, so a private repo's release
+assets 404 for it — the update check *and* the first install would both fail.
+Hosting the bytes elsewhere costs nothing in trust: the anchor is the `.msix`'s
+Authenticode signature, which Windows verifies before installing regardless of
+where it was downloaded from. Making the repo public would be the alternative.
+
+So a release has two stages, and the GitHub Release is still the gate:
+
+```
+release.yml   tag or one-click  ->  build, pack, sign  ->  DRAFT Release
+                                                              |
+                                                     you review and Publish
+                                                              |
+publish.yml   on: release published  ->  mirror packages to Blob Storage
+                                                              |
+                                              her next launch picks it up
+```
+
+Nothing reaches the blob — and so nothing is offered as an update — until you
+click Publish. The GitHub Release keeps the archive copy and the changelog.
 
 Ported from the [Janitor](https://github.com/Circuit-Stitch/Janitor) release
 workflow, minus the Linux and macOS jobs (this app drives Word over COM, so
@@ -31,13 +53,21 @@ git tag v1.0.1 && git push origin v1.0.1
 The one-click path keeps them equal by construction.
 
 Either way the run ends at a **draft** Release. Review it, edit the *What
-changed* section of the notes, then **Publish**. Only then does
-`…/releases/latest/download/MCAANewsletter.appinstaller` point at the new
-version — so the review before Publish is the release gate. A draft is not
-"latest", so a half-finished release never advertises an update.
+changed* section of the notes, then **Publish**. Publishing fires `publish.yml`,
+which mirrors the packages to Blob Storage — that upload is what actually offers
+the update, so the review before Publish is the release gate. Draft releases
+never fire the `published` event, so a half-finished release cannot advertise
+itself.
 
 A draft also defers git-tag creation until Publish, so a failed build leaves no
 dangling tag and the run is safely re-runnable.
+
+`publish.yml` uploads the `.msix` **before** the `.appinstaller`, so there is no
+window in which a launching client is told about a version it cannot yet
+download. It then fetches both back **anonymously** and fails if either is not
+HTTP 200 — the only check that actually proves what clients depend on, since
+RBAC, the container's access level and the content type can each be correct
+while the blob still is not publicly readable.
 
 **Dry run.** Run the workflow with an **empty** version: it builds and packs the
 MSIX but signs nothing, uploads nothing and drafts no Release. Use it to check a
@@ -72,6 +102,17 @@ configuration invisible from whichever job you happen to be reading.
 | `AZURE_SIGNING_ACCOUNT` | Artifact Signing account name |
 | `AZURE_SIGNING_PROFILE` | certificate profile name |
 | `WINDOWS_SIGNING_ENABLED` | `true` |
+| `AZURE_STORAGE_ACCOUNT` | storage account holding the packages |
+| `AZURE_STORAGE_CONTAINER` | container name within it, e.g. `packages` |
+| `AZURE_DOWNLOAD_BASE_URL` | public base URL of that container, **no trailing slash**, e.g. `https://<account>.blob.core.windows.net/packages` |
+
+`AZURE_DOWNLOAD_BASE_URL` has to agree with the other two — it is substituted
+into the `.appinstaller` at build time and **baked into every installed copy**,
+while the upload uses the account and container names. Point them at different
+places and the release succeeds, the install works, and updates silently never
+arrive. The `release.yml` build fails if it is unset or not `https://`, and
+`publish.yml` fetches it back anonymously after uploading, which catches a
+mismatch — but only after a release has been published.
 
 > **Note on names.** Microsoft renamed **Trusted Signing → Artifact Signing** in
 > January 2026. The portal now lists *Artifact Signing Accounts*, and the roles
@@ -88,16 +129,46 @@ because the OIDC subject names the repository:
 
 1. An Artifact Signing account and **certificate profile**.
 2. An Entra app registration with a **federated credential** whose subject is
+   the **immutable** form (see below) — not the familiar
    `repo:Circuit-Stitch/newsletter-helper:environment:release`. Same org as
-   Janitor, different repo — so Janitor's credential does not cover this one.
-   The subject must use the repo's **canonical** owner/name: GitHub redirects
-   pushes after a repo move, but the OIDC token always carries the current path,
-   so a subject naming the old owner silently fails to match.
+   Janitor, different repo, so Janitor's credential does not cover this one.
 3. The **Artifact Signing Certificate Profile Signer** role granted to that app on
    the signing account.
 4. A GitHub environment named **`release`** in this repo — the `windows` job runs
    in it so the OIDC subject is trigger-independent and one federated credential
-   covers every release.
+   covers every release. `publish.yml` uses the same environment, so that single
+   credential covers the blob upload too.
+5. A **storage account + container** for the packages, and the **Storage Blob
+   Data Contributor** role on it for the same app registration. See below.
+
+### Blob Storage for the packages
+
+Create a storage account and a container (`packages` is fine). Two settings are
+load-bearing:
+
+- On the **storage account**: *Allow Blob anonymous access* must be **Enabled**.
+  It defaults to disabled on new accounts, and while it is off, the container's
+  own setting cannot take effect.
+- On the **container**: anonymous access level **Blob**, not *Container* and not
+  *Private*. *Blob* allows reading a blob whose exact name you know, which is all
+  App Installer needs. *Container* would additionally let anyone list the
+  contents, which buys nothing.
+
+Then grant the app registration **Storage Blob Data Contributor** on the account
+or container (Access control (IAM), same flow as the signing role — remember to
+type into the members picker). `publish.yml` uploads with `--auth-mode login`
+using the OIDC identity, so **no storage account key is ever stored**. The
+Owner/Contributor roles do *not* include data-plane access; this data role is
+separate and its absence is a 403 at upload time.
+
+Only two blobs are ever written, and they are **overwritten** each release:
+`MCAANewsletter.msix` and `MCAANewsletter.appinstaller`. That stability is the
+whole point — it is what makes the URL baked into installed copies keep working,
+exactly as GitHub's `…/releases/latest/download/` did.
+
+Cost is negligible: two files of a few hundred KB, downloaded by one PC. Egress
+is billed, so keep the container's access level at *Blob* rather than publishing
+a listing that could be crawled.
 
 ### The app registration, click by click
 
@@ -111,19 +182,42 @@ Then, on the new registration → **Certificates & secrets → Federated
 credentials → Add credential**. Not *Client secrets* — the entire point of OIDC
 is that no long-lived credential is stored anywhere.
 
+#### Use the "Other issuer" scenario, not the GitHub one
+
+This repo presents an **immutable subject claim** — GitHub appends numeric owner
+and repository IDs, so the subject is:
+
+```
+repo:Circuit-Stitch@222346232/newsletter-helper@1317913512:environment:release
+```
+
+The portal's *GitHub Actions deploying Azure resources* scenario builds the
+subject from the org and repo **names** and cannot produce that form, so a
+credential created that way never matches and `azure/login` fails with
+`AADSTS700213: No matching federated identity record found`. Use **Other
+issuer** and type the subject in:
+
 | Field | Value |
 |---|---|
-| Scenario | GitHub Actions deploying Azure resources |
-| Organization | `Circuit-Stitch` |
-| Repository | `newsletter-helper` |
-| Entity type | **Environment** |
-| Environment name | `release` |
+| Issuer | `https://token.actions.githubusercontent.com` |
+| Subject identifier | `repo:Circuit-Stitch@222346232/newsletter-helper@1317913512:environment:release` |
+| Audience | `api://AzureADTokenExchange` |
 
-Entity type matters. *Environment* is what makes the subject independent of how
-the run was triggered, so one credential covers both a tag push and a one-click
-dispatch. *Branch* or *Tag* would need a credential per ref. The result is the
-subject `repo:Circuit-Stitch/newsletter-helper:environment:release`, which is why
-the `windows` job declares `environment: release`.
+[GitHub made this the default for every repository created after 15 July 2026](https://github.blog/changelog/2026-04-23-immutable-subject-claims-for-github-actions-oidc-tokens/);
+older repos keep the plain form unless opted in, which is why **Janitor's
+credential looks different** — it predates the change. The IDs defend against
+name recycling: delete a repo and recreate it under the same name and the ID
+differs, so the old credential no longer matches.
+
+If a subject ever needs rebuilding, don't reconstruct it by hand — run the
+workflow and copy the `subject claim` line the `azure/login` step prints. That is
+the authoritative value.
+
+Entity type still matters conceptually: `:environment:release` is what makes the
+subject independent of how the run was triggered, so one credential covers a tag
+push, a one-click dispatch, **and** `publish.yml`'s blob upload. A `:ref:` subject
+would need one credential per branch or tag. It is why both jobs declare
+`environment: release`.
 
 Finally, on the **Artifact Signing account** → Access control (IAM) → Add role
 assignment → **Artifact Signing Certificate Profile Signer** → assign to this app
@@ -158,9 +252,13 @@ everyone already installed, and GitHub's redirect does **not** save you: it
 redirects `git push`, but App Installer will not follow a redirect to a package
 whose identity it has not already trusted.
 
+The OIDC subject, by contrast, now survives a move: the immutable claim
+identifies the repo by numeric ID rather than by path, so renaming the repo or
+the org does not invalidate the federated credential.
+
 If the repo ever moves again, updating this file only fixes *future* installs.
 Anyone already on the old URL has to reinstall from the new `.appinstaller` by
-hand. Same for the OIDC subject above, which must name the canonical path.
+hand.
 
 ### The Publisher string is load-bearing
 
