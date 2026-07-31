@@ -155,7 +155,7 @@ jobs:
     needs: setup
     runs-on: windows-latest
     # Run in the `release` environment so the OIDC subject is
-    # `repo:Kyle-Falconer/newsletter-helper:environment:release` (trigger-
+    # `repo:Circuit-Stitch/newsletter-helper:environment:release` (trigger-
     # independent) - one Azure federated credential then covers every release.
     environment: release
     # OIDC token for Azure federated login - no client secret is ever stored.

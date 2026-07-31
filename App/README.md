@@ -41,7 +41,7 @@ The app ships as a signed **MSIX**, installed through a companion
 1. Copy the newsletter folder — `Drafts/`, `Published/`, `Template/` — anywhere
    on her machine. Her Desktop is fine. **Not** the USB stick: it is FAT32 with
    no journaling and already had Word crash-recovery leftovers on it.
-2. From the [latest release](https://github.com/Kyle-Falconer/newsletter-helper/releases/latest),
+2. From the [latest release](https://github.com/Circuit-Stitch/newsletter-helper/releases/latest),
    download **`MCAANewsletter.appinstaller`** and open it. Install from that, not
    from the `.msix` — the `.msix` installs the app once but does not wire up
    updates.

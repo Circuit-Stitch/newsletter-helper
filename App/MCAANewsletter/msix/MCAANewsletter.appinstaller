@@ -18,13 +18,13 @@
 <AppInstaller
     xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"
     Version="@VERSION@"
-    Uri="https://github.com/Kyle-Falconer/newsletter-helper/releases/latest/download/MCAANewsletter.appinstaller">
+    Uri="https://github.com/Circuit-Stitch/newsletter-helper/releases/latest/download/MCAANewsletter.appinstaller">
   <MainPackage
       Name="com.circuitstitch.apps.mcaanewsletter"
       Publisher="CN=Circuit Stitch, O=Circuit Stitch, L=West Sacramento, S=California, C=US"
       Version="@VERSION@"
       ProcessorArchitecture="x64"
-      Uri="https://github.com/Kyle-Falconer/newsletter-helper/releases/latest/download/MCAANewsletter.msix" />
+      Uri="https://github.com/Circuit-Stitch/newsletter-helper/releases/latest/download/MCAANewsletter.msix" />
   <UpdateSettings>
     <OnLaunch HoursBetweenUpdateChecks="0" />
   </UpdateSettings>

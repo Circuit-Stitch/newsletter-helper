@@ -64,19 +64,35 @@ no stored Azure credential.
 | `WINDOWS_SIGNING_ENABLED` | `true` |
 
 On the Azure side, four things — note that this repo needs its **own** federated
-credential even if the Trusted Signing account is shared with Janitor, because
-the OIDC subject names the repository:
+credential even though the Trusted Signing account is shared with Janitor,
+because the OIDC subject names the repository:
 
 1. A Trusted Signing account and **certificate profile**.
 2. An Entra app registration with a **federated credential** whose subject is
-   `repo:Kyle-Falconer/newsletter-helper:environment:release`. This is a
-   different repo *and* a different owner from Janitor's, so its credential does
-   not carry over.
+   `repo:Circuit-Stitch/newsletter-helper:environment:release`. Same org as
+   Janitor, different repo — so Janitor's credential does not cover this one.
+   The subject must use the repo's **canonical** owner/name: GitHub redirects
+   pushes after a repo move, but the OIDC token always carries the current path,
+   so a subject naming the old owner silently fails to match.
 3. The **Trusted Signing Certificate Profile Signer** role granted to that app on
    the signing account.
 4. A GitHub environment named **`release`** in this repo — the `windows` job runs
    in it so the OIDC subject is trigger-independent and one federated credential
    covers every release.
+
+### So is the repository path
+
+`MCAANewsletter.appinstaller` hardcodes
+`https://github.com/Circuit-Stitch/newsletter-helper/releases/latest/download/…`,
+and that URL is **baked into every installed copy** — it is where App Installer
+looks on each launch. Renaming or moving the repo therefore breaks updates for
+everyone already installed, and GitHub's redirect does **not** save you: it
+redirects `git push`, but App Installer will not follow a redirect to a package
+whose identity it has not already trusted.
+
+If the repo ever moves again, updating this file only fixes *future* installs.
+Anyone already on the old URL has to reinstall from the new `.appinstaller` by
+hand. Same for the OIDC subject above, which must name the canonical path.
 
 ### The Publisher string is load-bearing
 
