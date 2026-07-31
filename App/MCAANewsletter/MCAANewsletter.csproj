@@ -9,7 +9,7 @@
     <Company>Mendocino County Art Association</Company>
     <Product>MCAA Newsletter</Product>
     <AssemblyTitle>MCAA Newsletter</AssemblyTitle>
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <!--
       Taskbar and alt-tab icon. The MSIX tile logos beside it are what the Start
       menu uses; this one is for the running process. All four are generated from
