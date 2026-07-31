@@ -51,9 +51,19 @@ ever leaves the runner. Asking for a real release while it is unset fails in
 `setup`, before any version bump is pushed, rather than producing a Release with
 nothing in it.
 
-Set these as repo **variables** (Settings → Secrets and variables → Actions →
-Variables). None of them is a secret — authentication is GitHub OIDC, so there is
-no stored Azure credential.
+Set these as **repository** variables (Settings → Secrets and variables → Actions
+→ Variables), *not* environment variables on the `release` environment. None of
+them is a secret — authentication is GitHub OIDC, so there is no stored Azure
+credential.
+
+Repository scope is load-bearing for `WINDOWS_SIGNING_ENABLED`: it is read by the
+`setup` job, which deliberately declares no `environment:`. Set it on the
+environment instead and `setup` sees an empty string, so every real release fails
+with "signing is not enabled" immediately after you enabled it. The five `AZURE_*`
+variables are only read inside the `windows` job, which does declare the
+environment, so those would work at either scope — but `vars.X` reads both and
+looks identical either way, so splitting them across scopes just makes half the
+configuration invisible from whichever job you happen to be reading.
 
 | Variable | Value |
 |---|---|
