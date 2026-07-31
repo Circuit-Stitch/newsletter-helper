@@ -291,6 +291,19 @@ namespace MCAANewsletter.Tests
                                             .Where(f => !Path.GetFileName(f).StartsWith("~$"))
                                             .OrderBy(f => f));
 
+            // Whether any real document happens to hold one media stem under two
+            // convertible extensions is an accident of how Word last saved it —
+            // the archive here has none, so the collision guard would go
+            // untested. This makes one on purpose, so the guard is proven from
+            // any checkout rather than only on the machine that had a
+            // Word-bloated master lying around.
+            string fixture = BuildCollisionFixture(documents.First(File.Exists),
+                                                   Path.Combine(_scratch, "collision-fixture.docx"));
+            if (fixture != null) documents.Add(fixture);
+            Console.WriteLine(fixture != null
+                ? "   built a colliding fixture: " + Path.GetFileName(fixture)
+                : "   could not build a colliding fixture from this corpus");
+
             int collisionsResolved = 0, converted = 0, broken = 0;
 
             try
@@ -383,6 +396,70 @@ namespace MCAANewsletter.Tests
             Check("no document was broken by re-encoding", broken == 0, broken + " problems");
             Check("the name-collision guard was actually exercised", collisionsResolved > 0,
                   "no collisions occurred, so the guard is unproven");
+        }
+
+        /// <summary>
+        /// Copies a document, renaming one media part so its stem already exists
+        /// under another convertible extension — image8.png becomes image2.png
+        /// while image2.jpeg is still there. Re-encoding image2.png then wants to
+        /// write image2.jpeg, which is taken, so UniqueMediaName has to step in.
+        ///
+        /// Returns null if the source has no usable pair.
+        /// </summary>
+        static string BuildCollisionFixture(string source, string destination)
+        {
+            var parts = ReadParts(source);
+
+            var media = parts.Keys.Where(k => k.StartsWith("word/media/")).ToList();
+            var stems = new HashSet<string>(
+                media.Select(k => Path.GetFileNameWithoutExtension(k)), StringComparer.OrdinalIgnoreCase);
+
+            // The part to rename: convertible, and not itself a .jpeg.
+            string donor = media.FirstOrDefault(k =>
+            {
+                string e = Path.GetExtension(k).ToLowerInvariant();
+                return e == ".png" || e == ".bmp" || e == ".tif" || e == ".tiff";
+            });
+            // The stem to collide with: something already stored as .jpeg.
+            string victim = media.FirstOrDefault(k =>
+                Path.GetExtension(k).Equals(".jpeg", StringComparison.OrdinalIgnoreCase));
+            if (donor == null || victim == null) return null;
+
+            string newStem = Path.GetFileNameWithoutExtension(victim);
+            string newName = "word/media/" + newStem + Path.GetExtension(donor);
+            if (parts.ContainsKey(newName)) return null;
+
+            string oldTarget = "media/" + Path.GetFileName(donor);
+            string newTarget = "media/" + newStem + Path.GetExtension(donor);
+
+            // The stand-in re-encoder below only rewrites parts bigger than the
+            // smallest JPEG in the document, so a small donor would be skipped and
+            // never collide. Padding past the largest part guarantees it is
+            // converted whichever document this is built from; PNG readers stop at
+            // IEND, so the trailing bytes change nothing that matters.
+            int floor = media.Max(k => parts[k].Length) + 1024;
+            byte[] donorBytes = parts[donor];
+            if (donorBytes.Length < floor) Array.Resize(ref donorBytes, floor);
+
+            using (var zip = new ZipArchive(File.Create(destination), ZipArchiveMode.Create))
+                foreach (var part in parts)
+                {
+                    string name = part.Key == donor ? newName : part.Key;
+                    byte[] data = part.Key == donor ? donorBytes : part.Value;
+
+                    // Every relationship pointing at the donor has to follow it.
+                    if (name.EndsWith(".rels", StringComparison.Ordinal))
+                    {
+                        string xml = Encoding.UTF8.GetString(data);
+                        if (xml.Contains(oldTarget))
+                            data = Encoding.UTF8.GetBytes(xml.Replace(oldTarget, newTarget));
+                    }
+
+                    var entry = zip.CreateEntry(name, CompressionLevel.Optimal);
+                    using (var stream = entry.Open()) stream.Write(data, 0, data.Length);
+                }
+
+            return destination;
         }
 
         /// <summary>Smallest real JPEG in the package, used as a stand-in re-encode.</summary>
