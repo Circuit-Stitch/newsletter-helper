@@ -1,0 +1,23 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "MCAA Newsletter (Debug)",
+      "type": "clr",
+      "request": "launch",
+      "preLaunchTask": "build Debug",
+      "program": "${workspaceFolder}/App/MCAANewsletter/bin/Debug/MCAA Newsletter.exe",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole"
+    },
+    {
+      "name": "MCAA Newsletter (Release)",
+      "type": "clr",
+      "request": "launch",
+      "preLaunchTask": "build Release",
+      "program": "${workspaceFolder}/App/MCAANewsletter/bin/Release/MCAA Newsletter.exe",
+      "cwd": "${workspaceFolder}",
+      "console": "internalConsole"
+    }
+  ]
+}

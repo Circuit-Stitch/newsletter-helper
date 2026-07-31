@@ -1,0 +1,21 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build Debug",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/App/MCAANewsletter/MCAANewsletter.csproj", "-c", "Debug"],
+      "problemMatcher": "$msCompile",
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "build Release",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/App/MCAANewsletter/MCAANewsletter.csproj", "-c", "Release"],
+      "problemMatcher": "$msCompile",
+      "group": "build"
+    }
+  ]
+}
