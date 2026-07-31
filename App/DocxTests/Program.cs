@@ -14,9 +14,12 @@ namespace MCAANewsletter.Tests
     /// <summary>
     /// Checks the document surgery against the real newsletters.
     ///
-    ///     dotnet run --project App/DocxTests -- &lt;repo-root&gt; &lt;scratch-dir&gt;
+    ///     dotnet run --project App/DocxTests -- &lt;newsletter-folder&gt; &lt;scratch-dir&gt;
     ///
-    /// Nothing in the repository is written to. Every output goes to the scratch
+    /// The newsletter folder is the one holding Template/, Drafts/ and Published/.
+    /// It used to be this repository, and so used to default to the working
+    /// directory; the newsletters now live outside the repo, so the path has to be
+    /// given. Nothing there is written to — every output goes to the scratch
     /// directory, and Published/ is only ever read.
     /// </summary>
     static class Program
@@ -28,10 +31,24 @@ namespace MCAANewsletter.Tests
         {
             _root = args.Length > 0 ? args[0] : Directory.GetCurrentDirectory();
             _scratch = args.Length > 1 ? args[1] : Path.Combine(Path.GetTempPath(), "mcaa-tests");
+
+            // Without this the first check dies on a raw DirectoryNotFoundException
+            // naming some file deep inside the suite, which reads as a broken test
+            // rather than a missing argument.
+            if (!Directory.Exists(Path.Combine(_root, "Template")))
+            {
+                Console.Error.WriteLine(
+                    "No \"Template\" folder under:  " + _root + "\n\n" +
+                    "These tests run against the real newsletters, which live outside this\n" +
+                    "repository. Pass the folder holding Template/, Drafts/ and Published/:\n\n" +
+                    "    dotnet run --project App/DocxTests -- \"../MCAA Newsletters\"");
+                return 2;
+            }
+
             Directory.CreateDirectory(_scratch);
 
-            Console.WriteLine("repo    : " + _root);
-            Console.WriteLine("scratch : " + _scratch);
+            Console.WriteLine("newsletters : " + _root);
+            Console.WriteLine("scratch     : " + _scratch);
 
             ScanGoldenReference();
             RepairIsCorrectAndComplete();

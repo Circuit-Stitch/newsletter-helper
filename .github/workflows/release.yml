@@ -1,0 +1,273 @@
+# Windows release. Builds the app, packs it as an MSIX, signs it with Azure
+# Trusted Signing, and attaches it to a **draft** GitHub Release for review.
+#
+# Windows is the only platform - the app drives Word over COM - so unlike the
+# Janitor workflow this was ported from, there is no per-OS matrix.
+#
+# Two ways to cut a release (both end at a DRAFT you review + Publish):
+#   * One-click (preferred): Actions -> Release -> "Run workflow" -> type the
+#     version (e.g. 1.0.1). The `setup` job bumps MCAANewsletter.csproj, commits
+#     it to main, and the SAME run builds + drafts the release off that commit.
+#   * Manual: bump <Version> in MCAANewsletter.csproj yourself, then
+#     `git tag v1.0.1 && git push origin v1.0.1`.
+# `vX.Y.Z` MUST equal the csproj <Version> (`setup` fails a tag push otherwise;
+# the one-click path keeps them equal by construction). A DRAFT defers git-tag
+# creation until you Publish, so a failed build never leaves a dangling tag.
+#
+# `workflow_dispatch` with an EMPTY version is a **dry-run**: it builds and packs
+# the MSIX but signs nothing, uploads nothing and drafts no Release. Use it to
+# validate a packaging change.
+#
+# SIGNING GATE: the `WINDOWS_SIGNING_ENABLED` repo variable. While it is unset,
+# the MSIX is still built (so packaging stays verified) but is neither signed nor
+# uploaded - no unsigned .msix ever leaves the runner - and asking for a real
+# release fails fast in `setup` rather than pushing a version bump that can
+# produce nothing. Set it to `true` once the Azure release config exists.
+#
+# How the user gets the update: the .appinstaller carries
+# <UpdateSettings><OnLaunch HoursBetweenUpdateChecks="0"/>, so once she has
+# installed once from the .appinstaller URL, Windows checks on every launch and
+# updates itself. Publishing the draft Release is the entire release action.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version X.Y.Z (no leading v). Leave EMPTY for a dry-run build with no Release."
+        required: false
+        type: string
+
+# `setup` pushes the bump commit and `release` creates the draft; the built-in
+# GITHUB_TOKEN is read-only by default. The build job overrides this to read-only.
+permissions:
+  contents: write
+
+# Never cancel an in-flight release; serialize per ref.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Resolve the version and guard the single source of truth. On a
+  # `workflow_dispatch` with a version it bumps the csproj to that exact version,
+  # commits it to main, and hands the resulting SHA to the build job (NOT
+  # pre-dispatch main). On a `v*` tag push it instead asserts the tag already
+  # agrees with the csproj, so a forgotten bump cannot ship a Release whose name
+  # disagrees with the binary.
+  #
+  # It deliberately does NOT create a git tag - the draft Release creates it at
+  # Publish time (target_commitish), so a failed build leaves no dangling tag and
+  # the run is re-runnable. Outputs:
+  #   ref         - the git ref/SHA the build job checks out
+  #   tag         - the release name / tag_name (vX.Y.Z); empty on a dry-run
+  #   do_release  - "true" when a draft Release should be produced
+  #
+  # NOTE: the bump commit is pushed with GITHUB_TOKEN, which by design does NOT
+  # trigger another workflow run - the whole release happens in this single run.
+  setup:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.resolve.outputs.ref }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      do_release: ${{ steps.resolve.outputs.do_release }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # Fail here rather than after pushing a bump commit that can never produce
+      # a Release. A dry-run (empty version) is unaffected - it releases nothing
+      # either way, so it stays usable for validating packaging before Azure is
+      # wired up.
+      - name: Require signing for a real release
+        if: github.event_name != 'workflow_dispatch' || inputs.version != ''
+        run: |
+          if [ "${{ vars.WINDOWS_SIGNING_ENABLED }}" != "true" ]; then
+            echo "::error::Repo variable WINDOWS_SIGNING_ENABLED is not 'true', so no signed MSIX can be produced and this release would ship nothing. Set it once the Azure Trusted Signing release config exists. (Run this workflow with an empty version for an unsigned dry-run build.)"
+            exit 1
+          fi
+
+      - id: resolve
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          csproj=App/MCAANewsletter/MCAANewsletter.csproj
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${VERSION}" ]; then
+            echo "${VERSION}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
+              || { echo "::error::version must be X.Y.Z with no leading 'v' (got '${VERSION}')"; exit 1; }
+            # Idempotent bump: only commit when the version actually changes, so a
+            # re-run after a flaky build rebuilds the same SHA instead of failing
+            # on "nothing to commit".
+            sed -i -E "0,/<Version>[^<]*<\/Version>/s//<Version>${VERSION}<\/Version>/" "$csproj"
+            if git diff --quiet -- "$csproj"; then
+              echo "csproj already at ${VERSION} - no bump commit"
+            else
+              git config user.name  "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git add "$csproj"
+              git commit -m "ci(release): bump MCAA Newsletter to ${VERSION}"
+              git push origin "HEAD:${{ github.ref_name }}"
+            fi
+            {
+              echo "ref=$(git rev-parse HEAD)"
+              echo "tag=v${VERSION}"
+              echo "do_release=true"
+            } >> "$GITHUB_OUTPUT"
+
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Dry-run: build main as-is, no bump, no Release.
+            {
+              echo "ref=${{ github.ref }}"
+              echo "tag="
+              echo "do_release=false"
+            } >> "$GITHUB_OUTPUT"
+
+          else
+            # Real `v*` tag push: the tag must already match the csproj.
+            # sed, not `grep -oP`: PCRE grep refuses to run under a non-UTF-8
+            # locale, which is a silly way for a release to fail.
+            proj_ver="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' "$csproj" | head -1)"
+            tag_ver="${GITHUB_REF_NAME#v}"
+            echo "csproj version: '${proj_ver}'  ·  pushed tag: '${GITHUB_REF_NAME}' (-> '${tag_ver}')"
+            if [ "${proj_ver}" != "${tag_ver}" ]; then
+              echo "::error::Tag '${GITHUB_REF_NAME}' does not match the csproj <Version> '${proj_ver}'. Bump App/MCAANewsletter/MCAANewsletter.csproj to ${tag_ver} (or re-tag v${proj_ver}), then push again."
+              exit 1
+            fi
+            {
+              echo "ref=${{ github.ref }}"
+              echo "tag=${GITHUB_REF_NAME}"
+              echo "do_release=true"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+  # Build the app, assemble the MSIX with `makeappx` (Windows SDK), and sign it
+  # with Azure Trusted Signing (OIDC-federated, no stored secret).
+  #
+  # Build + pack ALWAYS run, so a packaging mistake is caught even before signing
+  # is switched on. Signing and upload are gated on WINDOWS_SIGNING_ENABLED, so
+  # an unsigned .msix never leaves the runner.
+  windows:
+    name: MSIX (signed)
+    needs: setup
+    runs-on: windows-latest
+    # Run in the `release` environment so the OIDC subject is
+    # `repo:Kyle-Falconer/newsletter-helper:environment:release` (trigger-
+    # independent) - one Azure federated credential then covers every release.
+    environment: release
+    # OIDC token for Azure federated login - no client secret is ever stored.
+    # Job-level perms override the workflow default; this job only reads source.
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.setup.outputs.ref }}
+
+      # net48 target. The csproj pulls Microsoft.NETFramework.ReferenceAssemblies,
+      # so the SDK preinstalled on the runner can build it with no targeting pack.
+      - name: Build
+        run: dotnet build "App/MCAANewsletter/MCAANewsletter.csproj" -c Release
+
+      # Assemble the MSIX pack layout: the exe + named logos at the manifest's
+      # referenced paths + AppxManifest.xml at the layout root, plus the companion
+      # .appinstaller. @VERSION@ -> the 4-part MSIX version (csproj X.Y.Z ->
+      # X.Y.Z.0); `setup` already guarantees the csproj version equals the tag.
+      - name: Assemble MSIX layout
+        shell: pwsh
+        run: |
+          $ver = (Select-String -Path App/MCAANewsletter/MCAANewsletter.csproj -Pattern '<Version>([^<]+)</Version>' | Select-Object -First 1).Matches[0].Groups[1].Value
+          $ver4 = "$ver.0"
+          Write-Host "MSIX version: $ver4"
+          $layout = "dist/msix"
+          New-Item -ItemType Directory -Force -Path "$layout/Images" | Out-Null
+          # AppendTargetFrameworkToOutputPath=false, so Release/ is the output dir.
+          Copy-Item "App/MCAANewsletter/bin/Release/MCAA Newsletter.exe" "$layout/MCAA Newsletter.exe"
+          Copy-Item App/MCAANewsletter/assets/Square44x44Logo.png   "$layout/Images/"
+          Copy-Item App/MCAANewsletter/assets/Square150x150Logo.png "$layout/Images/"
+          Copy-Item App/MCAANewsletter/assets/StoreLogo.png         "$layout/Images/"
+          (Get-Content App/MCAANewsletter/msix/AppxManifest.xml -Raw) -replace '@VERSION@', $ver4 | Set-Content -NoNewline "$layout/AppxManifest.xml"
+          (Get-Content App/MCAANewsletter/msix/MCAANewsletter.appinstaller -Raw) -replace '@VERSION@', $ver4 | Set-Content -NoNewline "dist/MCAANewsletter.appinstaller"
+
+      - name: Pack MSIX (makeappx)
+        shell: pwsh
+        run: |
+          $makeappx = (Get-ChildItem "C:/Program Files (x86)/Windows Kits/10/bin/*/x64/makeappx.exe" | Sort-Object FullName -Descending | Select-Object -First 1).FullName
+          if (-not $makeappx) { throw "makeappx.exe not found in the Windows SDK" }
+          Write-Host "Using $makeappx"
+          & $makeappx pack /d dist/msix /p dist/MCAANewsletter.msix /o
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Sign the .msix. The .appinstaller is a plaintext pointer - App Installer
+      # validates the referenced .msix's Authenticode signature, so it is not
+      # signed. Trusted Signing signs MSIX directly; the manifest Publisher must
+      # already equal the cert Subject (load-bearing) or this step rejects it.
+      - name: Azure login (OIDC)
+        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign MSIX (Azure Trusted Signing)
+        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
+        uses: azure/trusted-signing-action@v0
+        with:
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
+          files-folder: ${{ github.workspace }}\dist
+          files-folder-filter: msix
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      # Gated with the signing steps: nothing unsigned is ever uploaded.
+      - uses: actions/upload-artifact@v4
+        if: vars.WINDOWS_SIGNING_ENABLED == 'true'
+        with:
+          name: windows
+          path: |
+            dist/*.msix
+            dist/*.appinstaller
+          if-no-files-found: error
+
+  # Attach the signed package to a DRAFT GitHub Release. Runs when `setup` says
+  # do_release (a real `v*` tag, or a one-click dispatch with a version) - NOT on
+  # an empty-version dry-run. Publishing the draft is what makes the
+  # .appinstaller at .../releases/latest/download/ point at the new version, so
+  # the human review before Publish is the release gate.
+  release:
+    name: Draft GitHub Release
+    needs: [setup, windows]
+    if: needs.setup.outputs.do_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # Check out FIRST (before downloading artifacts) so checkout's clean step
+      # doesn't wipe the downloaded artifacts/ dir. Only needed for the
+      # release-notes template.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.setup.outputs.ref }}
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create draft Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          name: ${{ needs.setup.outputs.tag }}
+          tag_name: ${{ needs.setup.outputs.tag }}
+          body_path: .github/release-body.md
+          # One-click dispatch: the tag doesn't exist yet, so create it at the
+          # bump commit when published. Ignored on a real tag push.
+          target_commitish: ${{ needs.setup.outputs.ref }}
+          files: |
+            artifacts/**/*.msix
+            artifacts/**/*.appinstaller

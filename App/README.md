@@ -34,16 +34,28 @@ dependencies beyond the framework, so that one file is the whole program.
 
 ## Installing on her PC
 
+The app ships as a signed **MSIX**, installed through a companion
+`.appinstaller` file that also keeps it up to date. See
+[RELEASING.md](../RELEASING.md) for how a release is cut.
+
 1. Copy the newsletter folder — `Drafts/`, `Published/`, `Template/` — anywhere
    on her machine. Her Desktop is fine. **Not** the USB stick: it is FAT32 with
    no journaling and already had Word crash-recovery leftovers on it.
-2. Drop `MCAA Newsletter.exe` into that folder, beside those three subfolders.
-3. Run it once yourself. Windows will show *"Windows protected your PC"* because
-   the `.exe` is unsigned — click **More info → Run anyway**. That only happens
-   the first time, but do it for her rather than leaving her to meet it alone.
+2. From the [latest release](https://github.com/Kyle-Falconer/newsletter-helper/releases/latest),
+   download **`MCAANewsletter.appinstaller`** and open it. Install from that, not
+   from the `.msix` — the `.msix` installs the app once but does not wire up
+   updates.
+3. Open **MCAA Newsletter** from the Start menu. It asks which folder the
+   newsletters are in; point it at the one from step 1.
 
-On first run the app finds the folders by looking at where it is, so a normal
-install needs no setting up at all.
+There is no SmartScreen warning: the package is signed by Azure Trusted Signing,
+which is CA-trusted, so Windows installs it without a prompt.
+
+**Updates take care of themselves.** The `.appinstaller` sets
+`HoursBetweenUpdateChecks="0"`, so Windows checks the release page each time she
+launches the app and installs a new version in the background. Publishing the
+draft GitHub Release is the entire release action — nothing to tell her, nothing
+for her to click.
 
 Settings are per Windows account. If two people log into that PC under
 different accounts, each sets it up once.
@@ -55,9 +67,19 @@ Settled in this order, and the order matters:
 1. **Saved settings**, in `%APPDATA%\MCAA Newsletter\settings.txt`. If they exist
    they are the answer.
 2. **Otherwise** — first run only — a walk up from the `.exe` looking for a
-   folder holding `Template/MCAA-Newsletter-MASTER.docx`.
+   folder holding `Template/MCAA-Newsletter-MASTER.docx`. Under the MSIX install
+   the `.exe` lives in `WindowsApps`, so this finds nothing and never fires; it
+   still covers running a locally-built `.exe` dropped beside the folders.
 3. **Whatever came of those is re-checked**, every launch. If it does not hold
    up, the settings window opens with the reason on screen.
+
+Since (2) cannot fire under the MSIX install, the packaged first run always opens
+the settings window and asks. That is the intended path, not a failure — the
+wording it opens with is *"Please point the program at the newsletter folder"*.
+
+MSIX also virtualizes per-user writes, so `%APPDATA%\MCAA Newsletter\settings.txt`
+written by an unpackaged build is **not** visible to the packaged one. Moving from
+a loose `.exe` to the MSIX means picking the folder once more.
 
 Auto-detection deliberately does *not* run as a fallback when saved settings
 turn out to be wrong. A folder that has moved — a network drive offline, a
@@ -163,7 +185,18 @@ check fails the file is discarded and nothing is overwritten.
 
 ## Testing against known-correct output
 
-`Drafts/MCAA-Newsletter-DRAFT.docx` in this repo is the pre-repair pipeline
+The tests run against the **real newsletters, which are not in this repository** —
+they live beside it in `MCAA Newsletters/`. Pass that folder in:
+
+```
+dotnet run --project App/DocxTests -- "../MCAA Newsletters"
+```
+
+Without the argument the suite stops with a message saying so rather than
+running. It writes nothing to the folder: every output goes to a scratch
+directory and `Published/` is only ever read.
+
+`Drafts/MCAA-Newsletter-DRAFT.docx` in that folder is the pre-repair pipeline
 intermediate, so it is a ready-made test case with known answers. Scanning it
 must produce **24 placements across 12 photos** (each photo appears twice —
 Word 2010 writes a second copy into the `mc:Fallback` branch, named `imageN` and
@@ -179,13 +212,15 @@ Word 2010 writes a second copy into the `mc:Fallback` branch, named `imageN` and
 `image8.png` (763 × 38) and `image12.png` (1092 × 77) must be reported as
 decorative chrome and left alone.
 
-Both copies of the master — the one on disk and `git show
-HEAD:Template/MCAA-Newsletter-MASTER.docx` — must scan clean, with zero
-distortions. That is the regression check: the repair already ran on them.
+`Template/MCAA-Newsletter-MASTER.docx` must scan clean, with zero distortions.
+That is the regression check: the repair already ran on it. The master is no
+longer version controlled, so the copy on disk is the only reference there is —
+if it is ever replaced with an unrepaired one, this check is what catches it.
 
 ## Known limits
 
-- The `.exe` is unsigned, so SmartScreen warns on first run per machine.
+- A locally-built `.exe` is unsigned, so SmartScreen warns on first run. The
+  released MSIX is signed and does not.
 - Word must be closed for steps 2 and 3. The app checks and says so plainly,
   looking both for Word's `~$` owner file and for an exclusive-open failure.
 - Only `wp:inline` pictures are repaired. Verified sufficient on this document:
