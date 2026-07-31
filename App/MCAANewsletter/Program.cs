@@ -16,45 +16,73 @@ namespace MCAANewsletter
             // off by default, so this is wired up but dormant until asked for.
             DocxPackage.Reduce = ImageReducer.TryReduce;
 
-            string root = ResolveRoot();
+            Settings settings = Resolve();
+            if (settings == null) return;       // she closed the setup window
 
-            if (!Directory.Exists(Path.Combine(root, "Template")))
-            {
-                MessageBox.Show(
-                    "This program expects to sit in the newsletter folder, " +
-                    "alongside the Drafts, Published and Template folders.\n\n" +
-                    "It is currently in:\n" + root + "\n\n" +
-                    "Please move it into the newsletter folder and try again.",
-                    "MCAA Newsletter", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+            Directory.CreateDirectory(settings.DraftsPath);
+            Directory.CreateDirectory(settings.PublishedPath);
 
-            Directory.CreateDirectory(Path.Combine(root, "Drafts"));
-            Directory.CreateDirectory(Path.Combine(root, "Published"));
-
-            Application.Run(new MainForm(root));
+            Application.Run(new MainForm(settings));
         }
 
         /// <summary>
-        /// The newsletter folder is wherever the program is, which is why there is
-        /// no setting to configure and nothing to point at: she can move or rename
-        /// the whole folder and it keeps working.
+        /// Settled in this order, and the order is the whole point:
         ///
-        /// The walk up the tree is for running from a build output directory during
-        /// development; in her copy the very first check succeeds.
+        ///   1. Saved settings, if there are any. These are authoritative.
+        ///   2. Otherwise — first run only — look for the folder around the .exe,
+        ///      so the usual install needs no setting up at all.
+        ///   3. Whatever came out of those is re-checked. If it does not hold up,
+        ///      ask, with the reason on screen.
+        ///
+        /// What deliberately does not happen: falling back to auto-detection when
+        /// saved settings turn out to be wrong. A folder that has gone missing —
+        /// a network drive offline, a renamed directory — would otherwise see the
+        /// program quietly adopt some other newsletter folder near itself and
+        /// start work on the wrong master. Stopping to ask is the better failure.
         /// </summary>
-        static string ResolveRoot()
+        static Settings Resolve()
         {
-            string start = Path.GetDirectoryName(Application.ExecutablePath) ?? ".";
+            string exeFolder = Path.GetDirectoryName(Application.ExecutablePath) ?? ".";
 
-            for (var dir = new DirectoryInfo(start); dir != null; dir = dir.Parent)
+            Settings saved = Settings.Load();
+            Settings settings = saved ?? Settings.AutoDetect(exeFolder);
+
+            if (settings != null && settings.Problem() == null)
+                return settings;
+
+            string reason = settings == null
+                ? "Please point the program at the newsletter folder — the one holding the " +
+                  "Template folder."
+                : "The newsletter folder cannot be used at the moment:  " + settings.Problem();
+
+            Settings chosen = SettingsDialog.Prompt(
+                null, settings ?? new Settings { Root = exeFolder }, reason);
+
+            if (chosen == null) return null;
+
+            TrySave(chosen);
+            return chosen;
+        }
+
+        /// <summary>
+        /// A profile that cannot be written to is worth saying out loud — she
+        /// would otherwise be asked to set the program up again every single time
+        /// and have no idea why — but it is not worth refusing to run over.
+        /// </summary>
+        public static void TrySave(Settings settings)
+        {
+            try
             {
-                if (Directory.Exists(Path.Combine(dir.FullName, "Template")) &&
-                    Directory.Exists(Path.Combine(dir.FullName, "Published")))
-                    return dir.FullName;
+                settings.Save();
             }
-
-            return start;
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    "These settings could not be saved, so the program will ask again next time " +
+                    "it starts. Everything else will work as normal.\n\n" +
+                    "It tried to write:\n" + Settings.FilePath + "\n\n(" + ex.Message + ")",
+                    "MCAA Newsletter", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
         }
     }
 }

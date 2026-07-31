@@ -14,7 +14,13 @@
     <AssemblyName>DocxTests</AssemblyName>
     <LangVersion>latest</LangVersion>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <!--
+      Real cultures are needed on purpose. Issue file names must stay English
+      whatever the machine's locale is, and with InvariantGlobalization the
+      current culture is always invariant — so the test that checks it would
+      pass without proving anything.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,6 +28,8 @@
     <Compile Include="../MCAANewsletter/ImageDimensions.cs" />
     <Compile Include="../MCAANewsletter/ZipComment.cs" />
     <Compile Include="../MCAANewsletter/PhotoReport.cs" />
+    <Compile Include="../MCAANewsletter/Settings.cs" />
+    <Compile Include="../MCAANewsletter/IssueName.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 

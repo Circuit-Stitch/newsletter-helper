@@ -40,6 +40,7 @@ namespace MCAANewsletter.Tests
             SlimPreservesEveryArchivedDocument();
             DownsamplingRewiresThePackage();
             ZipCommentRoundTrips();
+            SettingsRefuseBadLayouts();
 
             Console.WriteLine();
             Console.WriteLine(_failures == 0
@@ -490,6 +491,101 @@ namespace MCAANewsletter.Tests
                       zip.Entries.Any(e => e.FullName == "word/document.xml"), "");
 
             try { File.Delete(file); } catch { }
+        }
+
+        /// <summary>
+        /// The settings screen is the only thing standing between a mistyped
+        /// layout and the app doing work in the wrong place, so the rules it
+        /// enforces are checked here rather than by clicking around the dialog.
+        ///
+        /// The repository itself is a valid newsletter folder, which makes it the
+        /// natural fixture for the cases that are supposed to pass.
+        /// </summary>
+        static void SettingsRefuseBadLayouts()
+        {
+            Section("Settings accept a real folder and refuse a broken one");
+
+            Settings Good() => new Settings { Root = _root };
+
+            Check("the repository is accepted as it stands",
+                  Good().Problem() == null, Good().Problem());
+            Check("and its master is found",
+                  Good().Warning() == null, Good().Warning());
+
+            Check("a folder that does not exist is refused",
+                  new Settings { Root = Path.Combine(_root, "no-such-folder") }.Problem() != null, "");
+
+            var noTemplate = Good();
+            noTemplate.TemplateFolder = "Nowhere";
+            Check("a missing Template folder is refused", noTemplate.Problem() != null, "");
+
+            // The one rule that prevents losing work: without both tokens every
+            // month resolves to the same file name and each issue overwrites the
+            // one before it.
+            foreach (string pattern in new[] { "Newsletter", "{year} Newsletter", "{month} Newsletter", "" })
+            {
+                var s = Good();
+                s.IssuePattern = pattern;
+                Check("issue name \"" + pattern + "\" is refused", s.Problem() != null, "");
+            }
+
+            // These are single names joined onto the root, not paths. A slash or a
+            // ".." would silently move the whole operation elsewhere on the disk.
+            foreach (string name in new[] { "..", ".", "", "  ", "Sub\\Folder", "Sub/Folder", "a:b" })
+            {
+                var s = Good();
+                s.DraftsFolder = name;
+                Check("drafts folder \"" + name + "\" is refused", s.Problem() != null, "");
+            }
+
+            var missingMaster = Good();
+            missingMaster.MasterFileName = "Not-Here.docx";
+            Check("a missing master warns but does not block",
+                  missingMaster.Problem() == null && missingMaster.Warning() != null, "");
+
+            // Month names must not follow the machine's locale, or the archive
+            // ends up with two spellings of the same month.
+            var previous = CultureInfo.CurrentCulture;
+            try
+            {
+                CultureInfo.CurrentCulture = new CultureInfo("fr-FR");
+                Check("month names stay English under another locale",
+                      Settings.Expand(Settings.DefaultIssuePattern, 2026, 8) ==
+                          "2026 August MCAA Newsletter",
+                      Settings.Expand(Settings.DefaultIssuePattern, 2026, 8));
+            }
+            finally { CultureInfo.CurrentCulture = previous; }
+
+            Check("the year is always four digits",
+                  Settings.Expand("{year}", 26, 8) == "0026", Settings.Expand("{year}", 26, 8));
+
+            var issue = new IssueName(Good(), 2026, 8);
+            Check("paths still read as they always did",
+                  issue.DraftDocx.EndsWith(Path.Combine("Drafts", "2026 August MCAA Newsletter-DRAFT.docx")) &&
+                  issue.PublishedPdf.EndsWith(Path.Combine("Published", "2026 August MCAA Newsletter.pdf")),
+                  issue.DraftDocx);
+
+            var renamed = Good();
+            renamed.MasterFileName = "Master.docx";
+            Check("the previous-master copy follows the master's name",
+                  Path.GetFileName(renamed.PreviousMasterPath) == "Master (previous).docx",
+                  Path.GetFileName(renamed.PreviousMasterPath));
+
+            // A relative path would otherwise resolve against whatever directory
+            // the program was started in, so the same saved setting could mean two
+            // different folders on two different launches.
+            var relative = new Settings { Root = "." };
+            Check("a typed folder is stored as a full path",
+                  Path.IsPathRooted(relative.Root), relative.Root);
+            Check("and surrounding spaces are dropped",
+                  new Settings { Root = "  " + _root + "  " }.Root == Path.GetFullPath(_root), "");
+
+            // AutoDetect is only ever allowed to guess a folder the app would also
+            // accept, so it walks up from a build output directory to the root.
+            Settings found = Settings.AutoDetect(Path.Combine(_root, "App", "DocxTests"));
+            Check("auto-detection walks up to the newsletter folder",
+                  found != null && Path.GetFullPath(found.Root) == Path.GetFullPath(_root),
+                  found == null ? "(not found)" : found.Root);
         }
 
         #endregion

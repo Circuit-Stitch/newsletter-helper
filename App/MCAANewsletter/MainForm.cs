@@ -12,17 +12,27 @@ namespace MCAANewsletter
     /// </summary>
     public sealed class MainForm : Form
     {
-        readonly string _root;
+        Settings _settings;
         readonly ComboBox _issuePicker = new ComboBox();
         readonly StepPanel _step1 = new StepPanel("1.  Start the newsletter");
         readonly StepPanel _step2 = new StepPanel("2.  Check the photos and make the PDF");
         readonly StepPanel _step3 = new StepPanel("3.  Publish");
 
-        IssueName Issue => (IssueName)_issuePicker.SelectedItem;
+        /// <summary>
+        /// Mirrors the picker rather than asking it.
+        ///
+        /// The slow steps run their work on a worker thread, and reading
+        /// ComboBox.SelectedItem there is a cross-thread control access — it
+        /// throws under a debugger and is undefined without one. Keeping the
+        /// answer in a plain field means the worker never touches a control.
+        /// </summary>
+        IssueName _issue;
 
-        public MainForm(string root)
+        IssueName Issue => _issue;
+
+        public MainForm(Settings settings)
         {
-            _root = root;
+            _settings = settings;
             BuildLayout();
             PopulateIssues();
             RefreshState();
@@ -68,7 +78,11 @@ namespace MCAANewsletter
             _issuePicker.DropDownStyle = ComboBoxStyle.DropDownList;
             _issuePicker.Font = new Font("Segoe UI", 11F, FontStyle.Regular);
             _issuePicker.Bounds = new Rectangle(180, 88, 220, 30);
-            _issuePicker.SelectedIndexChanged += (s, e) => RefreshState();
+            _issuePicker.SelectedIndexChanged += (s, e) =>
+            {
+                _issue = _issuePicker.SelectedItem as IssueName;
+                RefreshState();
+            };
 
             var steps = new Panel
             {
@@ -96,20 +110,39 @@ namespace MCAANewsletter
             {
                 Text = "Where do these files live?",
                 Font = Ui.Body,
-                Bounds = new Rectangle(24, 548, 300, 24),
+                Bounds = new Rectangle(24, 548, 260, 24),
                 LinkColor = Ui.DeepGreen
             };
-            help.Click += (s, e) => OpenFolder(_root);
+            help.Click += (s, e) => OpenFolder(_settings.Root);
+
+            // A link rather than a button: changing this is a once-in-a-blue-moon
+            // thing, and it should not look like a fourth step.
+            var change = new LinkLabel
+            {
+                Text = "Change where the files live…",
+                Font = Ui.Body,
+                TextAlign = ContentAlignment.MiddleRight,
+                Bounds = new Rectangle(376, 548, 280, 24),
+                LinkColor = Ui.MutedInk
+            };
+            change.Click += (s, e) => Guarded(ChangeSettings);
 
             Controls.AddRange(new Control[]
             {
-                banner, issueLabel, _issuePicker, steps, openDrafts, openPublished, help
+                banner, issueLabel, _issuePicker, steps, openDrafts, openPublished, help, change
             });
         }
 
         void PopulateIssues()
         {
-            IssueName start = IssueName.DefaultFor(_root, DateTime.Today);
+            // Rebuilt whenever the settings change, because every IssueName holds
+            // the settings it was built from and would otherwise go on naming
+            // files by the old layout.
+            IssueName start = _issue != null
+                ? new IssueName(_settings, _issue.Year, _issue.Month)
+                : IssueName.DefaultFor(_settings, DateTime.Today);
+
+            _issuePicker.Items.Clear();
 
             // A year either side of the issue she is most likely to want. Enough
             // to fix a mistake or catch up on a missed month, short enough to scan.
@@ -117,6 +150,21 @@ namespace MCAANewsletter
                 _issuePicker.Items.Add(start.AddMonths(offset));
 
             _issuePicker.SelectedIndex = 12;    // the default: next month
+        }
+
+        void ChangeSettings()
+        {
+            Settings chosen = SettingsDialog.Prompt(this, _settings, null);
+            if (chosen == null) return;
+
+            _settings = chosen;
+            Program.TrySave(_settings);
+
+            Directory.CreateDirectory(_settings.DraftsPath);
+            Directory.CreateDirectory(_settings.PublishedPath);
+
+            PopulateIssues();
+            RefreshState();
         }
 
         #endregion

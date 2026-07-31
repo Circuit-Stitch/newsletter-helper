@@ -12,22 +12,21 @@ namespace MCAANewsletter
     ///   Drafts/2026 August MCAA Newsletter-DRAFT.pdf
     ///   Published/2026 August MCAA Newsletter.docx
     ///   Published/2026 August MCAA Newsletter.pdf
+    ///
+    /// The folder and file names all come from <see cref="Settings"/>; the shape
+    /// above is what they default to.
     /// </summary>
     public sealed class IssueName
     {
-        public const string DraftSuffix = "-DRAFT";
-        public const string MasterFileName = "MCAA-Newsletter-MASTER.docx";
-        public const string PreviousMasterFileName = "MCAA-Newsletter-MASTER (previous).docx";
-
         public int Year { get; }
         public int Month { get; }
+        public Settings Settings { get; }
 
-        readonly string _root;
-
-        public IssueName(string root, int year, int month)
+        public IssueName(Settings settings, int year, int month)
         {
+            if (settings == null) throw new ArgumentNullException(nameof(settings));
             if (month < 1 || month > 12) throw new ArgumentOutOfRangeException(nameof(month));
-            _root = root;
+            Settings = settings;
             Year = year;
             Month = month;
         }
@@ -44,41 +43,42 @@ namespace MCAANewsletter
         public string Display => MonthName + " " + Year.ToString(CultureInfo.InvariantCulture);
 
         /// <summary>"2026 August MCAA Newsletter" — the stem both folders build on.</summary>
-        public string BaseName =>
-            Year.ToString(CultureInfo.InvariantCulture) + " " + MonthName + " MCAA Newsletter";
+        public string BaseName => Settings.Expand(Settings.IssuePattern, Year, Month);
 
-        public string DraftsFolder => Path.Combine(_root, "Drafts");
-        public string PublishedFolder => Path.Combine(_root, "Published");
-        public string TemplateFolder => Path.Combine(_root, "Template");
+        public string DraftsFolder => Settings.DraftsPath;
+        public string PublishedFolder => Settings.PublishedPath;
+        public string TemplateFolder => Settings.TemplatePath;
 
-        public string DraftDocx => Path.Combine(DraftsFolder, BaseName + DraftSuffix + ".docx");
-        public string DraftPdf => Path.Combine(DraftsFolder, BaseName + DraftSuffix + ".pdf");
+        string DraftStem => BaseName + Settings.DraftSuffix;
+
+        public string DraftDocx => Path.Combine(DraftsFolder, DraftStem + ".docx");
+        public string DraftPdf => Path.Combine(DraftsFolder, DraftStem + ".pdf");
 
         /// <summary>Kept beside the draft when the photo repair rewrites it.</summary>
         public string DraftBackup =>
-            Path.Combine(DraftsFolder, BaseName + DraftSuffix + " (before photo fix).docx");
+            Path.Combine(DraftsFolder, DraftStem + " (before photo fix).docx");
 
         public string PublishedDocx => Path.Combine(PublishedFolder, BaseName + ".docx");
         public string PublishedPdf => Path.Combine(PublishedFolder, BaseName + ".pdf");
 
-        public string MasterDocx => Path.Combine(TemplateFolder, MasterFileName);
-        public string PreviousMasterDocx => Path.Combine(TemplateFolder, PreviousMasterFileName);
+        public string MasterDocx => Settings.MasterPath;
+        public string PreviousMasterDocx => Settings.PreviousMasterPath;
 
         /// <summary>
         /// The issue the app opens on. She works a month ahead — the archive shows
         /// the August issue finished in July — so "next month" is the right guess
         /// far more often than the current one.
         /// </summary>
-        public static IssueName DefaultFor(string root, DateTime today)
+        public static IssueName DefaultFor(Settings settings, DateTime today)
         {
             DateTime next = new DateTime(today.Year, today.Month, 1).AddMonths(1);
-            return new IssueName(root, next.Year, next.Month);
+            return new IssueName(settings, next.Year, next.Month);
         }
 
         public IssueName AddMonths(int months)
         {
             DateTime d = new DateTime(Year, Month, 1).AddMonths(months);
-            return new IssueName(_root, d.Year, d.Month);
+            return new IssueName(Settings, d.Year, d.Month);
         }
 
         public override string ToString() => Display;

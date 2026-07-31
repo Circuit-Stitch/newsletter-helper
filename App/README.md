@@ -42,8 +42,44 @@ dependencies beyond the framework, so that one file is the whole program.
    the `.exe` is unsigned — click **More info → Run anyway**. That only happens
    the first time, but do it for her rather than leaving her to meet it alone.
 
-The app finds the folders by looking at where it is, so there is nothing to
-configure and no settings file. She can move or rename the whole folder freely.
+On first run the app finds the folders by looking at where it is, so a normal
+install needs no setting up at all.
+
+Settings are per Windows account. If two people log into that PC under
+different accounts, each sets it up once.
+
+## Where it looks
+
+Settled in this order, and the order matters:
+
+1. **Saved settings**, in `%APPDATA%\MCAA Newsletter\settings.txt`. If they exist
+   they are the answer.
+2. **Otherwise** — first run only — a walk up from the `.exe` looking for a
+   folder holding `Template/MCAA-Newsletter-MASTER.docx`.
+3. **Whatever came of those is re-checked**, every launch. If it does not hold
+   up, the settings window opens with the reason on screen.
+
+Auto-detection deliberately does *not* run as a fallback when saved settings
+turn out to be wrong. A folder that has moved — a network drive offline, a
+renamed directory — would otherwise see the program quietly adopt some other
+newsletter folder near itself and start work on the wrong master. Stopping to
+ask is the better failure.
+
+The settings window (*"Change where the files live…"*, bottom right) sets the
+folder, the three subfolder names, the master file name, the per-issue name
+pattern and the draft ending. Every box re-checks the whole setup as it is
+typed and **Save stays greyed until it is usable** — a settings screen that
+lets you save a folder that is not there has only moved the failure to a worse
+moment. Refusing a pattern without both `{year}` and `{month}` is the check
+that matters most: without them every issue resolves to one file name and each
+month overwrites the last.
+
+Note what is *not* saved: anything about the state of an issue. Whether a draft
+exists, whether the PDF is made, whether it is published — still read off the
+filesystem on every refresh, so the app still cannot disagree with what is
+actually in the folder.
+
+Delete `settings.txt` and the program goes back to finding the folder itself.
 
 ## What each step does
 
