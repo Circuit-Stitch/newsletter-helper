@@ -80,6 +80,41 @@ because the OIDC subject names the repository:
    in it so the OIDC subject is trigger-independent and one federated credential
    covers every release.
 
+### The app registration, click by click
+
+Creating it: **Single tenant** is correct. Leave **Redirect URI blank** — redirect
+URIs are for interactive browser sign-in, where a user authenticates and is
+redirected back with a code. GitHub Actions OIDC has no browser and no user: the
+workflow presents a GitHub-issued JWT straight to the token endpoint. The field
+is simply unused here.
+
+Then, on the new registration → **Certificates & secrets → Federated
+credentials → Add credential**. Not *Client secrets* — the entire point of OIDC
+is that no long-lived credential is stored anywhere.
+
+| Field | Value |
+|---|---|
+| Scenario | GitHub Actions deploying Azure resources |
+| Organization | `Circuit-Stitch` |
+| Repository | `newsletter-helper` |
+| Entity type | **Environment** |
+| Environment name | `release` |
+
+Entity type matters. *Environment* is what makes the subject independent of how
+the run was triggered, so one credential covers both a tag push and a one-click
+dispatch. *Branch* or *Tag* would need a credential per ref. The result is the
+subject `repo:Circuit-Stitch/newsletter-helper:environment:release`, which is why
+the `windows` job declares `environment: release`.
+
+Finally, on the **Trusted Signing account** → Access control (IAM) → Add role
+assignment → **Trusted Signing Certificate Profile Signer** → assign to this app
+registration. Without it, `azure/login` succeeds and the signing step then fails
+with an authorization error, which reads misleadingly like a bad credential.
+
+The three IDs for the variables table: `AZURE_CLIENT_ID` is the registration's
+**Application (client) ID**, `AZURE_TENANT_ID` its **Directory (tenant) ID**, and
+`AZURE_SUBSCRIPTION_ID` is the subscription holding the Trusted Signing account.
+
 ### So is the repository path
 
 `MCAANewsletter.appinstaller` hardcodes
