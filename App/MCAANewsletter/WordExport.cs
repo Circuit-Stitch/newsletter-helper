@@ -47,8 +47,44 @@ namespace MCAANewsletter
         public static bool IsOpenElsewhere(string path)
         {
             if (!File.Exists(path)) return false;
-            if (File.Exists(OwnerFilePath(path))) return true;
+            return File.Exists(OwnerFilePath(path)) || IsLocked(path);
+        }
 
+        /// <summary>
+        /// An owner file with nothing actually holding the document — what Word
+        /// leaves behind when it crashes, or when the drive is pulled mid-edit.
+        ///
+        /// Worth telling apart from a genuine open: on its own the owner file
+        /// makes <see cref="IsOpenElsewhere"/> true forever, so the app would go
+        /// on saying "close it in Word" to someone who has already closed Word
+        /// and has no other way to clear it.
+        /// </summary>
+        public static bool HasStaleOwnerFile(string path)
+        {
+            return File.Exists(path) && File.Exists(OwnerFilePath(path)) && !IsLocked(path);
+        }
+
+        /// <summary>Deletes the leftover owner file. True if it is gone afterwards.</summary>
+        public static bool RemoveOwnerFile(string path)
+        {
+            string owner = OwnerFilePath(path);
+            try
+            {
+                if (File.Exists(owner))
+                {
+                    // Word marks it hidden, and File.Delete will not remove a
+                    // read-only file.
+                    File.SetAttributes(owner, FileAttributes.Normal);
+                    File.Delete(owner);
+                }
+                return !File.Exists(owner);
+            }
+            catch (IOException) { return false; }
+            catch (UnauthorizedAccessException) { return false; }
+        }
+
+        static bool IsLocked(string path)
+        {
             try
             {
                 using (new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None)) { }

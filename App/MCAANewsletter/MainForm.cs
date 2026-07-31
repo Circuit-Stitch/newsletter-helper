@@ -180,7 +180,7 @@ namespace MCAANewsletter
 
                 default:
                     _step2.Apply(StepStatus.Done, "Make the PDF again");
-                    _step2.Detail = "PDF made " + Format(File.GetLastWriteTime(Issue.DraftPdf)) +
+                    _step2.Detail = "PDF made " + Format(state.DraftPdfMadeOn) +
                                     ". Click again if you have changed anything since.";
                     break;
             }
@@ -246,12 +246,7 @@ namespace MCAANewsletter
                 return;
             }
 
-            if (WordExport.IsOpenElsewhere(Issue.DraftDocx))
-            {
-                ShowMessage("The newsletter is still open in Word.\n\n" +
-                            "Please save it and close Word, then click this button again.");
-                return;
-            }
+            if (!ClearToTouchTheDraft()) return;
 
             PhotoScanResult scan = null;
             BusyDialog.Run(this, "Checking the photos…", () => scan = DocxPackage.ScanPhotos(Issue.DraftDocx));
@@ -306,12 +301,7 @@ namespace MCAANewsletter
                 return;
             }
 
-            if (WordExport.IsOpenElsewhere(Issue.DraftDocx))
-            {
-                ShowMessage("The newsletter is still open in Word.\n\n" +
-                            "Please close it, then click Publish again.");
-                return;
-            }
+            if (!ClearToTouchTheDraft()) return;
 
             bool updateMaster;
             using (var dialog = new PublishDialog(Issue, state.PublishedDocxExists || state.PublishedPdfExists))
@@ -348,7 +338,11 @@ namespace MCAANewsletter
             string message = "The " + Issue.Display + " newsletter is published.\n\n" +
                              "Both files are in the Published folder.";
 
-            if (slim != null && slim.BytesSaved > 0)
+            // Only worth saying when the two figures actually read differently:
+            // "came down from 8.4 MB to 8.4 MB" reads like a program that has
+            // miscounted.
+            if (slim != null && slim.BytesSaved > 0 &&
+                Math.Round(slim.BytesBefore / 1048576.0, 1) > Math.Round(slim.BytesAfter / 1048576.0, 1))
                 message += string.Format(CultureInfo.CurrentCulture,
                     "\n\nThe published Word file came down from {0:0.0} MB to {1:0.0} MB — the photos " +
                     "were saved at printing size and the copies Word makes of them were removed. " +
@@ -360,6 +354,48 @@ namespace MCAANewsletter
                 message += "\n\nNext month will start from this issue.";
 
             MessageBox.Show(this, message, "Published", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+
+        /// <summary>
+        /// Whether the draft can be read right now, and a way out if it cannot.
+        ///
+        /// Word signals ownership with a hidden "~$" file, which it deletes when
+        /// it closes properly — but not when it crashes or the drive is pulled.
+        /// A leftover file used to jam this permanently: nothing holds the
+        /// document, yet every attempt was met with "close it in Word", which she
+        /// had already done. So the two cases are told apart and the dead one is
+        /// offered a way out.
+        /// </summary>
+        bool ClearToTouchTheDraft()
+        {
+            if (!WordExport.IsOpenElsewhere(Issue.DraftDocx)) return true;
+
+            if (!WordExport.HasStaleOwnerFile(Issue.DraftDocx))
+            {
+                ShowMessage("The newsletter is still open in Word.\n\n" +
+                            "Please save it and close Word, then click this button again.");
+                return false;
+            }
+
+            var answer = MessageBox.Show(this,
+                "The " + Issue.Display + " newsletter looks like it is open in Word, but Word " +
+                "does not have it — this is usually what Word leaves behind when it closes " +
+                "unexpectedly.\n\n" +
+                "Shall I tidy that up and carry on?",
+                "Left over from last time", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+            if (answer != DialogResult.Yes) return false;
+
+            if (!WordExport.RemoveOwnerFile(Issue.DraftDocx))
+            {
+                ShowMessage("That leftover file could not be removed, so this step " +
+                            "cannot go ahead yet.\n\n" +
+                            "Restarting the computer usually clears it.");
+                return false;
+            }
+
+            RefreshState();
+            return true;
         }
 
         #endregion

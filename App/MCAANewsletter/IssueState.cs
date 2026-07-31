@@ -33,6 +33,7 @@ namespace MCAANewsletter
         public bool DraftIsOpenInWord { get; private set; }
 
         public DateTime? DraftStarted { get; private set; }
+        public DateTime? DraftPdfMadeOn { get; private set; }
         public DateTime? PublishedOn { get; private set; }
 
         public bool FullyPublished => PublishedDocxExists && PublishedPdfExists;
@@ -56,13 +57,21 @@ namespace MCAANewsletter
                 s.DraftStarted = File.GetCreationTime(issue.DraftDocx);
                 s.DraftIsOpenInWord = WordExport.IsOpenElsewhere(issue.DraftDocx);
             }
+            if (s.DraftPdfExists)
+                s.DraftPdfMadeOn = File.GetLastWriteTime(issue.DraftPdf);
             if (s.PublishedPdfExists)
                 s.PublishedOn = File.GetLastWriteTime(issue.PublishedPdf);
 
             if (s.FullyPublished)
             {
-                s.Step1 = StepStatus.Done;
-                s.Step2 = StepStatus.Done;
+                // Published — but she may have tidied the working copies out of
+                // Drafts since. Steps 1 and 2 describe what is on disk now, not
+                // what was there when the issue went out, or the window ends up
+                // claiming a draft that is not there and offering to open it.
+                s.Step1 = s.DraftExists ? StepStatus.Done : StepStatus.Current;
+                s.Step2 = s.DraftPdfExists ? StepStatus.Done
+                        : s.DraftExists ? StepStatus.Current
+                        : StepStatus.Waiting;
                 s.Step3 = StepStatus.Done;
             }
             else if (s.DraftExists && s.DraftPdfExists)
