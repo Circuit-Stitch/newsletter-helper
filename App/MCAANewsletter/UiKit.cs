@@ -71,15 +71,20 @@ namespace MCAANewsletter
             _title.Font = Ui.StepTitle;
             _title.Text = title;
 
-            _detail.SetBounds(52, 44, 380, 46);
+            _detail.SetBounds(52, 44, 380, 54);
             _detail.Font = Ui.Body;
             _detail.ForeColor = Ui.MutedInk;
 
             Action.SetBounds(0, 0, 230, 34);
-            Action.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
             Controls.AddRange(new Control[] { _glyph, _title, _detail, Action });
-            Resize += (s, e) => Action.Location = new Point(Width - Action.Width - 16, 46);
+            Resize += (s, e) =>
+            {
+                Action.Location = new Point(Width - Action.Width - 16, 46);
+                // The detail label sits above the button in z-order, so any
+                // horizontal overlap clips the button's left edge. Stop short of it.
+                _detail.Width = Action.Left - 12 - _detail.Left;
+            };
         }
 
         public string Title { get => _title.Text; set => _title.Text = value; }
