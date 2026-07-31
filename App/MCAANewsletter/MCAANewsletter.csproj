@@ -39,6 +39,16 @@
     </PackageReference>
   </ItemGroup>
 
+  <!--
+    Embedded rather than copied beside the .exe: the MSIX payload is whatever the
+    build produced, and a loose file is one more thing that can fail to be in it.
+    LogicalName is explicit because the SDK's default mangling of the path is a
+    silent null stream if it does not match what the code asks for.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="assets\circuit-stitch.png" LogicalName="circuit-stitch.png" />
+  </ItemGroup>
+
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />

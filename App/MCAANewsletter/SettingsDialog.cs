@@ -56,12 +56,12 @@ namespace MCAANewsletter
         {
             _settings = settings;
 
-            Text = "MCAA Newsletter — where the files live";
+            Text = "MCAA Newsletter — Settings";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MinimizeBox = false;
             MaximizeBox = false;
-            ClientSize = new Size(640, 574);
+            ClientSize = new Size(640, 592);
             BackColor = Color.White;
             Font = Ui.Body;
 
@@ -74,6 +74,13 @@ namespace MCAANewsletter
                 ForeColor = Ui.BodyInk,
                 Bounds = new Rectangle(24, y, 500, 26)
             });
+
+            Add(new PictureBox
+            {
+                Image = Ui.Logo,
+                SizeMode = PictureBoxSizeMode.Zoom,
+                Bounds = new Rectangle(552, 16, 64, 64)
+            });
             y += 30;
 
             // Problem messages are written for a message box, where a path on its
@@ -83,9 +90,11 @@ namespace MCAANewsletter
                 "in Drafts, and puts finished issues in Published.";
             _reason.Font = Ui.Body;
             _reason.ForeColor = reason == null ? Ui.MutedInk : BadInk;
-            _reason.Bounds = new Rectangle(24, y, 592, 40);
+            // Stops short of the logo, and taller than the text needs: the case
+            // that matters is a long problem message, not the default blurb.
+            _reason.Bounds = new Rectangle(24, y, 500, 58);
             Add(_reason);
-            y += 50;
+            y += 68;
 
             // --- the folder itself -------------------------------------------
             Add(Heading("Newsletter folder", y));

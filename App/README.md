@@ -91,7 +91,7 @@ renamed directory — would otherwise see the program quietly adopt some other
 newsletter folder near itself and start work on the wrong master. Stopping to
 ask is the better failure.
 
-The settings window (*"Change where the files live…"*, bottom right) sets the
+The settings window (*"Settings"*, bottom right) sets the
 folder, the three subfolder names, the master file name, the per-issue name
 pattern and the draft ending. Every box re-checks the whole setup as it is
 typed and **Save stays greyed until it is usable** — a settings screen that

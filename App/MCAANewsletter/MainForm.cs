@@ -119,9 +119,12 @@ namespace MCAANewsletter
             // thing, and it should not look like a fourth step.
             var change = new LinkLabel
             {
-                Text = "Change where the files live…",
+                Text = "Settings",
                 Font = Ui.Body,
-                TextAlign = ContentAlignment.MiddleRight,
+                // Top-, not middle-aligned: it shares a line with the help link,
+                // which has no alignment set, and centring only this one puts the
+                // two a few pixels out from each other.
+                TextAlign = ContentAlignment.TopRight,
                 Bounds = new Rectangle(376, 548, 280, 24),
                 LinkColor = Ui.MutedInk
             };

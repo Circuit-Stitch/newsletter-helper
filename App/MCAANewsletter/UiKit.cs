@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -27,6 +28,18 @@ namespace MCAANewsletter
         public static readonly Font BodyBold = new Font("Segoe UI", 10F, FontStyle.Bold);
         public static readonly Font Glyph = new Font("Segoe UI", 15F, FontStyle.Bold);
         public static readonly Font ButtonFont = new Font("Segoe UI", 10F, FontStyle.Regular);
+
+        /// <summary>
+        /// The Circuit Stitch mark, embedded in the .exe (see the csproj).
+        ///
+        /// The stream is deliberately never disposed: GDI+ reads from it lazily
+        /// for the lifetime of the Image, and closing it turns into "A generic
+        /// error occurred in GDI+" the next time the thing is painted — at paint
+        /// time, not load time, which is a miserable thing to diagnose. Held in a
+        /// static so its process lifetime is obvious.
+        /// </summary>
+        public static readonly Image Logo = Image.FromStream(
+            Assembly.GetExecutingAssembly().GetManifestResourceStream("circuit-stitch.png"));
 
         public static Button MakeButton(string text, bool primary)
         {
