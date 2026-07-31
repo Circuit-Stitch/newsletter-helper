@@ -58,23 +58,32 @@ no stored Azure credential.
 | Variable | Value |
 |---|---|
 | `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` | the federated app registration's IDs |
-| `AZURE_SIGNING_ENDPOINT` | region endpoint, e.g. `https://eus.codesigning.azure.net/` |
-| `AZURE_SIGNING_ACCOUNT` | Trusted Signing account name |
+| `AZURE_SIGNING_ENDPOINT` | the account's region endpoint — copy it from the account's Overview blade rather than typing it, e.g. `https://eus.codesigning.azure.net/` |
+| `AZURE_SIGNING_ACCOUNT` | Artifact Signing account name |
 | `AZURE_SIGNING_PROFILE` | certificate profile name |
 | `WINDOWS_SIGNING_ENABLED` | `true` |
 
+> **Note on names.** Microsoft renamed **Trusted Signing → Artifact Signing** in
+> January 2026. The portal now lists *Artifact Signing Accounts*, and the roles
+> are *Artifact Signing Certificate Profile Signer* and *Artifact Signing
+> Identity Verifier*. The GitHub Action moved from
+> `azure/trusted-signing-action@v0` to `azure/artifact-signing-action@v2`, and its
+> `trusted-signing-account-name` input is deprecated in favour of
+> `signing-account-name` — this workflow uses the current names. Older
+> write-ups, including Janitor's, still use the old ones.
+
 On the Azure side, four things — note that this repo needs its **own** federated
-credential even though the Trusted Signing account is shared with Janitor,
+credential even though the Artifact Signing account is shared with Janitor,
 because the OIDC subject names the repository:
 
-1. A Trusted Signing account and **certificate profile**.
+1. An Artifact Signing account and **certificate profile**.
 2. An Entra app registration with a **federated credential** whose subject is
    `repo:Circuit-Stitch/newsletter-helper:environment:release`. Same org as
    Janitor, different repo — so Janitor's credential does not cover this one.
    The subject must use the repo's **canonical** owner/name: GitHub redirects
    pushes after a repo move, but the OIDC token always carries the current path,
    so a subject naming the old owner silently fails to match.
-3. The **Trusted Signing Certificate Profile Signer** role granted to that app on
+3. The **Artifact Signing Certificate Profile Signer** role granted to that app on
    the signing account.
 4. A GitHub environment named **`release`** in this repo — the `windows` job runs
    in it so the OIDC subject is trigger-independent and one federated credential
@@ -106,14 +115,14 @@ dispatch. *Branch* or *Tag* would need a credential per ref. The result is the
 subject `repo:Circuit-Stitch/newsletter-helper:environment:release`, which is why
 the `windows` job declares `environment: release`.
 
-Finally, on the **Trusted Signing account** → Access control (IAM) → Add role
-assignment → **Trusted Signing Certificate Profile Signer** → assign to this app
+Finally, on the **Artifact Signing account** → Access control (IAM) → Add role
+assignment → **Artifact Signing Certificate Profile Signer** → assign to this app
 registration. Without it, `azure/login` succeeds and the signing step then fails
 with an authorization error, which reads misleadingly like a bad credential.
 
 The three IDs for the variables table: `AZURE_CLIENT_ID` is the registration's
 **Application (client) ID**, `AZURE_TENANT_ID` its **Directory (tenant) ID**, and
-`AZURE_SUBSCRIPTION_ID` is the subscription holding the Trusted Signing account.
+`AZURE_SUBSCRIPTION_ID` is the subscription holding the Artifact Signing account.
 
 ### So is the repository path
 
@@ -139,7 +148,7 @@ It is currently:
 CN=Circuit Stitch, O=Circuit Stitch, L=West Sacramento, S=California, C=US
 ```
 
-Under Trusted Signing the Subject comes from the account's **Identity
+Under Artifact Signing the Subject comes from the account's **Identity
 Validation**, not from the individual certificate profile — so a new profile
 under the existing Circuit Stitch account keeps this string. **Check the exact
 Subject in the Azure portal before the first signed run.** If it differs by so
@@ -153,7 +162,7 @@ much as a space, **three** files need the same edit:
 
 Consequence worth knowing: Windows shows **"Circuit Stitch"** as the publisher on
 the install prompt, even though the app is branded for the art association.
-Changing that means a separate Trusted Signing account with its own identity
+Changing that means a separate Artifact Signing account with its own identity
 validation for the association — a multi-day verification process, not a config
 change.
 
@@ -163,9 +172,9 @@ change.
 publishing two releases and upgrading on a real Windows machine. On the first
 one, confirm:
 
-- Trusted Signing accepts the package — i.e. the **Publisher matches**.
+- Artifact Signing accepts the package — i.e. the **Publisher matches**.
 - Installing from the `.appinstaller` URL gives **no sideload-trust prompt**
-  (Trusted Signing is CA-trusted, so there should be none).
+  (Artifact Signing is CA-trusted, so there should be none).
 - Publishing a *higher* version afterwards triggers an **in-place update** on
   next launch.
 - The packaged app can read and write `settings.txt` under MSIX's storage

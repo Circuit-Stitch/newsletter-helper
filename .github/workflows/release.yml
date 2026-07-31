@@ -1,5 +1,6 @@
 # Windows release. Builds the app, packs it as an MSIX, signs it with Azure
-# Trusted Signing, and attaches it to a **draft** GitHub Release for review.
+# Artifact Signing (formerly Trusted Signing), and attaches it to a **draft**
+# GitHub Release for review.
 #
 # Windows is the only platform - the app drives Word over COM - so unlike the
 # Janitor workflow this was ported from, there is no per-OS matrix.
@@ -85,7 +86,7 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || inputs.version != ''
         run: |
           if [ "${{ vars.WINDOWS_SIGNING_ENABLED }}" != "true" ]; then
-            echo "::error::Repo variable WINDOWS_SIGNING_ENABLED is not 'true', so no signed MSIX can be produced and this release would ship nothing. Set it once the Azure Trusted Signing release config exists. (Run this workflow with an empty version for an unsigned dry-run build.)"
+            echo "::error::Repo variable WINDOWS_SIGNING_ENABLED is not 'true', so no signed MSIX can be produced and this release would ship nothing. Set it once the Azure Artifact Signing release config exists. (Run this workflow with an empty version for an unsigned dry-run build.)"
             exit 1
           fi
 
@@ -145,7 +146,7 @@ jobs:
           fi
 
   # Build the app, assemble the MSIX with `makeappx` (Windows SDK), and sign it
-  # with Azure Trusted Signing (OIDC-federated, no stored secret).
+  # with Azure Artifact Signing (OIDC-federated, no stored secret).
   #
   # Build + pack ALWAYS run, so a packaging mistake is caught even before signing
   # is switched on. Signing and upload are gated on WINDOWS_SIGNING_ENABLED, so
@@ -204,8 +205,13 @@ jobs:
 
       # Sign the .msix. The .appinstaller is a plaintext pointer - App Installer
       # validates the referenced .msix's Authenticode signature, so it is not
-      # signed. Trusted Signing signs MSIX directly; the manifest Publisher must
+      # signed. Artifact Signing signs MSIX directly; the manifest Publisher must
       # already equal the cert Subject (load-bearing) or this step rejects it.
+      #
+      # azure/login must come first: the signing action takes no credential inputs
+      # and picks up what this step leaves in the environment. It excludes most
+      # DefaultAzureCredential types by default, but NOT EnvironmentCredential,
+      # which is the one azure/login populates.
       - name: Azure login (OIDC)
         if: vars.WINDOWS_SIGNING_ENABLED == 'true'
         uses: azure/login@v2
@@ -214,12 +220,16 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Sign MSIX (Azure Trusted Signing)
+      # Microsoft renamed Trusted Signing -> Artifact Signing in January 2026:
+      # `azure/trusted-signing-action` redirects to `azure/artifact-signing-action`
+      # and `trusted-signing-account-name` still works but is deprecated in favour
+      # of `signing-account-name`. Both current names used here.
+      - name: Sign MSIX (Azure Artifact Signing)
         if: vars.WINDOWS_SIGNING_ENABLED == 'true'
-        uses: azure/trusted-signing-action@v0
+        uses: azure/artifact-signing-action@v2
         with:
           endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
-          trusted-signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
           certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
           files-folder: ${{ github.workspace }}\dist
           files-folder-filter: msix

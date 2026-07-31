@@ -13,7 +13,7 @@
   an update she will not get. No ShowPrompt, no ForceUpdateFromAnyVersion - the
   update lands and the next launch is the new version.
 
-  `Publisher` must match AppxManifest.xml / the Trusted Signing cert Subject.
+  `Publisher` must match AppxManifest.xml / the Artifact Signing cert Subject.
 -->
 <AppInstaller
     xmlns="http://schemas.microsoft.com/appx/appinstaller/2018"

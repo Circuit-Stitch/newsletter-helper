@@ -5,7 +5,7 @@
   version (csproj X.Y.Z -> X.Y.Z.0), then runs `makeappx pack`.
 
   LOAD-BEARING: `Publisher` below MUST exactly equal the Subject (CN=...) of the
-  Azure Trusted Signing certificate profile, or the signing step rejects the
+  Azure Artifact Signing certificate profile, or the signing step rejects the
   package. It is hardcoded here (the CN is public - it is in every signed
   artifact), NOT freely chosen. It reads "Circuit Stitch" rather than the art
   association because the certificate is issued against that verified identity;

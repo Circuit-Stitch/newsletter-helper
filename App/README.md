@@ -48,7 +48,7 @@ The app ships as a signed **MSIX**, installed through a companion
 3. Open **MCAA Newsletter** from the Start menu. It asks which folder the
    newsletters are in; point it at the one from step 1.
 
-There is no SmartScreen warning: the package is signed by Azure Trusted Signing,
+There is no SmartScreen warning: the package is signed by Azure Artifact Signing,
 which is CA-trusted, so Windows installs it without a prompt.
 
 **Updates take care of themselves.** The `.appinstaller` sets
