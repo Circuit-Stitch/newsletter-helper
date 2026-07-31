@@ -287,6 +287,10 @@ jobs:
           # One-click dispatch: the tag doesn't exist yet, so create it at the
           # bump commit when published. Ignored on a real tag push.
           target_commitish: ${{ needs.setup.outputs.ref }}
+          # Never draft a release with nothing attached. The default is to skip
+          # unmatched globs silently, which would produce a release that looks
+          # publishable and then mirrors nothing to Blob Storage.
+          fail_on_unmatched_files: true
           files: |
             artifacts/**/*.msix
             artifacts/**/*.appinstaller

@@ -53,7 +53,13 @@ git tag v1.0.1 && git push origin v1.0.1
 The one-click path keeps them equal by construction.
 
 Either way the run ends at a **draft** Release. Review it, edit the *What
-changed* section of the notes, then **Publish**. Publishing fires `publish.yml`,
+changed* section of the notes, then **Publish**.
+
+**Publish that draft — do not create a new release.** The packages are attached
+to the draft, and GitHub happily allows a second, hand-made release on the same
+tag. Publishing that one instead fires `publish.yml` against a release with no
+assets, so it uploads nothing and clients stay on the old version. Renaming the
+draft before publishing is fine; replacing it is not. Publishing fires `publish.yml`,
 which mirrors the packages to Blob Storage — that upload is what actually offers
 the update, so the review before Publish is the release gate. Draft releases
 never fire the `published` event, so a half-finished release cannot advertise

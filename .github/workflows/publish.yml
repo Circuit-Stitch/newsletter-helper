@@ -65,11 +65,14 @@ jobs:
           gh release download "$TAG" --repo "${{ github.repository }}" --dir dist \
             --pattern '*.msix' --pattern '*.appinstaller'
           ls -l dist
-          # A release with no packages means the signing job was skipped or its
-          # upload was gated off. Publishing that would be a no-op that looks
-          # like success.
-          [ -f dist/MCAANewsletter.msix ]         || { echo "::error::No MCAANewsletter.msix on release $TAG. Was WINDOWS_SIGNING_ENABLED set when it was built?"; exit 1; }
-          [ -f dist/MCAANewsletter.appinstaller ] || { echo "::error::No MCAANewsletter.appinstaller on release $TAG."; exit 1; }
+          # A release with no packages would upload nothing and leave clients on
+          # the old version while the run went green. By far the most common
+          # cause is publishing a hand-made release instead of the draft that
+          # release.yml produced - both can sit on the same tag, and only the
+          # draft has the packages attached.
+          hint="Publish the DRAFT that the Release workflow created for this tag - a release created by hand has no packages attached. Check for a draft on $TAG. If there is none, re-run the Release workflow."
+          [ -f dist/MCAANewsletter.msix ]         || { echo "::error::No MCAANewsletter.msix on release $TAG. $hint"; exit 1; }
+          [ -f dist/MCAANewsletter.appinstaller ] || { echo "::error::No MCAANewsletter.appinstaller on release $TAG. $hint"; exit 1; }
 
       - name: Azure login (OIDC)
         uses: azure/login@v2
