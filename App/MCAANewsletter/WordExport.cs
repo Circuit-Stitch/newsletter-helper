@@ -118,6 +118,12 @@ namespace MCAANewsletter
 
             dynamic word = null;
             dynamic document = null;
+
+            // Held rather than reached through in one expression: Documents is a
+            // COM object in its own right, and "word.Documents.Open(...)" leaves a
+            // live reference on Word that nothing is able to release afterwards.
+            object documents = null;
+
             try
             {
                 try
@@ -136,7 +142,8 @@ namespace MCAANewsletter
                 word.DisplayAlerts = WdAlertsNone;
                 word.ScreenUpdating = false;
 
-                document = word.Documents.Open(
+                documents = word.Documents;
+                document = ((dynamic)documents).Open(
                     FileName: docxPath,
                     ConfirmConversions: false,
                     ReadOnly: true,
@@ -186,22 +193,52 @@ namespace MCAANewsletter
             {
                 // Orphaned WINWORD.EXE processes are the classic failure here, so
                 // every one of these runs regardless of what went wrong above.
-                CloseQuietly(document, word);
+                CloseQuietly(document, documents, word);
             }
         }
 
-        static void CloseQuietly(dynamic document, dynamic word)
+        /// <summary>
+        /// The two plain-object locals on the first lines are load-bearing, not
+        /// tidying.
+        ///
+        /// Anything done with a `dynamic` value — including passing it as an
+        /// argument — compiles to a DLR call site, and binding one against a COM
+        /// instance builds an InstanceRestriction, which takes a WeakReference
+        /// over the RCW. Once Close has destroyed the document and Quit has ended
+        /// the WINWORD process, taking that weak reference fails: 0x80010114 for
+        /// the document, 0x800706BE for the application. The release therefore
+        /// never ran at all, and the bare catch meant nothing ever said so.
+        ///
+        /// Capturing the references while the objects are still alive makes the
+        /// releases ordinary static calls. ReleaseComObject is happy with a
+        /// disconnected RCW — it only decrements the wrapper's count and never
+        /// calls into the object.
+        /// </summary>
+        static void CloseQuietly(dynamic document, object documents, dynamic word)
         {
-            if (document != null)
+            object documentRef = document;
+            object wordRef = word;
+
+            if (documentRef != null)
             {
                 try { document.Close(SaveChanges: WdDoNotSaveChanges); } catch { }
-                try { Marshal.ReleaseComObject(document); } catch { }
+                Release(documentRef);
             }
-            if (word != null)
+
+            if (documents != null) Release(documents);
+
+            if (wordRef != null)
             {
                 try { word.Quit(SaveChanges: WdDoNotSaveChanges); } catch { }
-                try { Marshal.ReleaseComObject(word); } catch { }
+                Release(wordRef);
             }
+        }
+
+        static void Release(object comObject)
+        {
+            try { Marshal.ReleaseComObject(comObject); }
+            catch (ArgumentException) { }       // not an RCW; nothing to release
+            catch (COMException) { }
         }
     }
 }
