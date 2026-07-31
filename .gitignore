@@ -5,10 +5,14 @@
 ~$*
 ~WRL*.tmp
 
-# Build artefacts, all regenerable by the scripts in Scripts/
+# The newsletters themselves live outside this repo. If someone points a
+# working copy at a real newsletter folder, do not let the issues back in.
 Drafts/
-Published/*.docx.tmp
+Published/
 
 # .NET build output for the Windows app
 App/**/bin/
 App/**/obj/
+
+# AI workflow metadata
+.serena/
