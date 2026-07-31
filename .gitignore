@@ -8,3 +8,7 @@
 # Build artefacts, all regenerable by the scripts in Scripts/
 Drafts/
 Published/*.docx.tmp
+
+# .NET build output for the Windows app
+App/**/bin/
+App/**/obj/

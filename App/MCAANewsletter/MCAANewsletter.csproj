@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>MCAA Newsletter</AssemblyName>
+    <RootNamespace>MCAANewsletter</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Company>Mendocino County Art Association</Company>
+    <Product>MCAA Newsletter</Product>
+    <AssemblyTitle>MCAA Newsletter</AssemblyTitle>
+    <Version>1.0.0</Version>
+    <!-- No satellite assemblies or config file to clutter the folder she opens. -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+
+  <!--
+    Explicit references rather than UseWindowsForms: that property's support for
+    .NET Framework targets varies by SDK version, and these five references work
+    on every SDK that can build net48 at all.
+  -->
+  <!--
+    Lets the project compile on a machine without the .NET Framework targeting
+    pack installed — including macOS and Linux. The resulting .exe still only
+    RUNS on Windows, but it means the build can be checked anywhere.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+    <!-- Required for `dynamic`, which is how Word is driven without an Office PIA. -->
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Exercises the document surgery against the real newsletters.
+
+    Targets a modern cross-platform framework rather than net48 so it runs on any
+    machine — the package layer deliberately has no Windows dependencies, and the
+    only way to know that stays true is to keep compiling it without them.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>MCAANewsletter.Tests</RootNamespace>
+    <AssemblyName>DocxTests</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../MCAANewsletter/DocxPackage.cs" />
+    <Compile Include="../MCAANewsletter/ImageDimensions.cs" />
+    <Compile Include="../MCAANewsletter/ZipComment.cs" />
+    <Compile Include="../MCAANewsletter/PhotoReport.cs" />
+    <Compile Include="Program.cs" />
+  </ItemGroup>
+
+</Project>

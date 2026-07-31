@@ -1,0 +1,476 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+using MCAANewsletter;
+
+namespace MCAANewsletter.Tests
+{
+    /// <summary>
+    /// Checks the document surgery against the real newsletters.
+    ///
+    ///     dotnet run --project App/DocxTests -- &lt;repo-root&gt; &lt;scratch-dir&gt;
+    ///
+    /// Nothing in the repository is written to. Every output goes to the scratch
+    /// directory, and Published/ is only ever read.
+    /// </summary>
+    static class Program
+    {
+        static string _root, _scratch;
+        static int _failures, _checks;
+
+        static int Main(string[] args)
+        {
+            _root = args.Length > 0 ? args[0] : Directory.GetCurrentDirectory();
+            _scratch = args.Length > 1 ? args[1] : Path.Combine(Path.GetTempPath(), "mcaa-tests");
+            Directory.CreateDirectory(_scratch);
+
+            Console.WriteLine("repo    : " + _root);
+            Console.WriteLine("scratch : " + _scratch);
+
+            ScanGoldenReference();
+            RepairIsCorrectAndComplete();
+            MastersScanClean();
+            SlimUndoesWhatWordDoes();
+            SlimPreservesEveryArchivedDocument();
+            DownsamplingRewiresThePackage();
+            ZipCommentRoundTrips();
+
+            Console.WriteLine();
+            Console.WriteLine(_failures == 0
+                ? $"PASS — {_checks} checks"
+                : $"FAIL — {_failures} of {_checks} checks failed");
+            return _failures == 0 ? 0 : 1;
+        }
+
+        #region checks
+
+        /// <summary>
+        /// The port must reproduce the Python original's decisions exactly. These
+        /// numbers come from Scripts/fix_aspect_ratios.py run over the same file.
+        /// </summary>
+        static void ScanGoldenReference()
+        {
+            Section("Photo scan reproduces the Python reference");
+
+            var scan = DocxPackage.ScanPhotos(Draft);
+
+            Console.WriteLine($"{"image",-16}{"was off",9}  {"repair",-8}{"detail",12}  {"box before",14}{"box after",14}");
+            foreach (var f in scan.DistinctPhotos)
+            {
+                string detail = f.Repair == PhotoRepair.Crop
+                    ? $"{f.CropCost * 100:0.0}% {f.Axis}" : f.Axis;
+                string after = f.Repair == PhotoRepair.Resize
+                    ? $"{f.BoxAfterWidthIn:0.00}x{f.BoxAfterHeightIn:0.00}in" : "unchanged";
+                Console.WriteLine($"{f.MediaName,-16}{f.Distortion * 100,8:+0.0;-0.0}%  " +
+                                  $"{f.Repair.ToString().ToLowerInvariant(),-8}{detail,12}  " +
+                                  $"{$"{f.BoxBeforeWidthIn:0.00}x{f.BoxBeforeHeightIn:0.00}in",14}{after,14}");
+            }
+
+            Check("24 distorted placements", scan.PlacementCount == 24, scan.PlacementCount.ToString());
+            Check("12 distinct photos once duplicates are grouped",
+                  scan.DistinctPhotos.Count == 12, scan.DistinctPhotos.Count.ToString());
+            Check("nothing unreadable", scan.Unreadable.Count == 0, string.Join(",", scan.Unreadable));
+
+            var worst = scan.DistinctPhotos.First();
+            Check("worst is +39.8%", Math.Abs(worst.Distortion * 100 - 39.8) < 0.1,
+                  (worst.Distortion * 100).ToString("0.0", CultureInfo.InvariantCulture));
+            Check("worst is repaired by resizing the width",
+                  worst.Repair == PhotoRepair.Resize && worst.Axis == "width", worst.Axis);
+            Check("worst box 3.24x2.36in becomes 2.32x2.36in",
+                  Near(worst.BoxBeforeWidthIn, 3.24) && Near(worst.BoxBeforeHeightIn, 2.36) &&
+                  Near(worst.BoxAfterWidthIn, 2.32) && Near(worst.BoxAfterHeightIn, 2.36),
+                  $"{worst.BoxBeforeWidthIn:0.00}x{worst.BoxBeforeHeightIn:0.00} -> " +
+                  $"{worst.BoxAfterWidthIn:0.00}x{worst.BoxAfterHeightIn:0.00}");
+
+            Check("5 photos resized, 7 cropped",
+                  scan.DistinctPhotos.Count(f => f.Repair == PhotoRepair.Resize) == 5 &&
+                  scan.DistinctPhotos.Count(f => f.Repair == PhotoRepair.Crop) == 7,
+                  $"{scan.DistinctPhotos.Count(f => f.Repair == PhotoRepair.Resize)} resized, " +
+                  $"{scan.DistinctPhotos.Count(f => f.Repair == PhotoRepair.Crop)} cropped");
+
+            // The green header pills are stretched to page width on purpose.
+            var names = new HashSet<string>(scan.Findings.Select(f => f.MediaName));
+            Check("decorative chrome excluded",
+                  !names.Contains("image8.png") && !names.Contains("image12.png"), "");
+        }
+
+        static void RepairIsCorrectAndComplete()
+        {
+            Section("Repair fixes everything and moves nothing else");
+
+            string repaired = Path.Combine(_scratch, "repaired.docx");
+            DocxPackage.RepairPhotos(Draft, repaired);
+
+            var after = DocxPackage.ScanPhotos(repaired);
+            Check("no distortion remains", !after.AnyProblems,
+                  after.PlacementCount + " left");
+
+            var before = ReadParts(Draft);
+            var now = ReadParts(repaired);
+
+            Check("only word/document.xml changed",
+                  before.Keys.All(k => k == "word/document.xml" || Same(before[k], now[k])) &&
+                  before.Count == now.Count, "");
+
+            Check("every photo's bytes are untouched",
+                  before.Keys.Where(k => k.StartsWith("word/media/"))
+                            .All(k => Same(before[k], now[k])), "");
+
+            string textBefore = VisibleText(before["word/document.xml"]);
+            string textAfter = VisibleText(now["word/document.xml"]);
+            Check("the words on the page are identical", textBefore == textAfter,
+                  $"{textBefore.Length} vs {textAfter.Length} characters");
+
+            var boxesBefore = Extents(before["word/document.xml"]);
+            var boxesAfter = Extents(now["word/document.xml"]);
+            Check("same number of picture boxes", boxesBefore.Count == boxesAfter.Count,
+                  $"{boxesBefore.Count} vs {boxesAfter.Count}");
+
+            bool noneGrew = boxesBefore.Count == boxesAfter.Count &&
+                            boxesBefore.Zip(boxesAfter, (b, a) => a.Item1 <= b.Item1 && a.Item2 <= b.Item2).All(x => x);
+            Check("no box grew", noneGrew, "");
+
+            int shrunk = boxesBefore.Zip(boxesAfter, (b, a) => (a.Item1 < b.Item1 || a.Item2 < b.Item2) ? 1 : 0).Sum();
+            Console.WriteLine($"   {shrunk} boxes reduced, {boxesBefore.Count - shrunk} left exactly as they were");
+        }
+
+        static void MastersScanClean()
+        {
+            Section("Both masters are already repaired");
+
+            string onDisk = Path.Combine(_root, "Template", "MCAA-Newsletter-MASTER.docx");
+            if (File.Exists(onDisk))
+            {
+                var scan = DocxPackage.ScanPhotos(onDisk);
+                Check("master on disk has no distorted photos", !scan.AnyProblems,
+                      scan.PlacementCount + " found");
+            }
+        }
+
+        /// <summary>
+        /// The case that happens every month. The draft is a document Word has
+        /// saved, so it carries the Compatibility Mode 14 duplication: 42 media
+        /// parts holding 22 distinct images.
+        /// </summary>
+        static void SlimUndoesWhatWordDoes()
+        {
+            Section("Slimming undoes the duplication Word adds on every save");
+
+            string output = Path.Combine(_scratch, "slimmed-draft.docx");
+            var result = DocxPackage.Slim(Draft, output);
+
+            Console.WriteLine($"   {result.BytesBefore / 1048576.0:0.00}M -> {result.BytesAfter / 1048576.0:0.00}M " +
+                              $"({result.PercentSaved:0}% smaller)");
+            Console.WriteLine($"   {result.MediaPartsBefore} media parts -> {result.MediaPartsAfter}, " +
+                              $"{result.DuplicatesRemoved} duplicates removed");
+
+            Check("the original was actually improved on", !result.KeptOriginal, "kept original");
+            Check("20 duplicate image parts removed", result.DuplicatesRemoved == 20,
+                  result.DuplicatesRemoved.ToString());
+            Check("42 media parts become 22",
+                  result.MediaPartsBefore == 42 && result.MediaPartsAfter == 22,
+                  $"{result.MediaPartsBefore} -> {result.MediaPartsAfter}");
+            Check("the file gets meaningfully smaller", result.PercentSaved > 15,
+                  $"{result.PercentSaved:0.0}%");
+
+            var before = ReadParts(Draft);
+            var after = ReadParts(output);
+
+            Check("revision IDs are gone from the body",
+                  Regex.Matches(Encoding.UTF8.GetString(after["word/document.xml"]), @"w:rsidR=").Count == 0,
+                  Regex.Matches(Encoding.UTF8.GetString(after["word/document.xml"]), @"w:rsidR=").Count.ToString());
+
+            Check("revision IDs are gone from settings",
+                  !Encoding.UTF8.GetString(after["word/settings.xml"]).Contains("<w:rsids>"), "");
+
+            Check("the words on the page survive slimming",
+                  VisibleText(before["word/document.xml"]) == VisibleText(after["word/document.xml"]), "");
+
+            Check("every picture box is exactly where it was",
+                  Extents(before["word/document.xml"]).SequenceEqual(Extents(after["word/document.xml"])), "");
+
+            Check("embedded fonts are kept",
+                  after.Keys.Count(k => k.StartsWith("word/fonts/")) ==
+                  before.Keys.Count(k => k.StartsWith("word/fonts/")),
+                  $"{before.Keys.Count(k => k.StartsWith("word/fonts/"))} -> " +
+                  $"{after.Keys.Count(k => k.StartsWith("word/fonts/"))}");
+
+            // Every rId the body uses must still land on a part that exists.
+            var rels = Encoding.UTF8.GetString(after["word/_rels/document.xml.rels"]);
+            var targets = Regex.Matches(rels, @"Target=""(?:\.\./)?media/([^""]+)""")
+                               .Cast<Match>().Select(m => m.Groups[1].Value).Distinct();
+            var present = new HashSet<string>(
+                after.Keys.Where(k => k.StartsWith("word/media/")).Select(k => k.Substring("word/media/".Length)),
+                StringComparer.OrdinalIgnoreCase);
+            Check("every picture reference still resolves", targets.All(present.Contains), "");
+
+            try { File.Delete(output); } catch { }
+        }
+
+        static void SlimPreservesEveryArchivedDocument()
+        {
+            Section("Slimming preserves the body of every archived document");
+
+            string published = Path.Combine(_root, "Published");
+            if (!Directory.Exists(published)) { Console.WriteLine("   no Published/ folder"); return; }
+
+            var files = Directory.GetFiles(published, "*.docx")
+                                 .Where(f => !Path.GetFileName(f).StartsWith("~$"))
+                                 .OrderBy(f => f).ToList();
+
+            long totalBefore = 0, totalAfter = 0;
+            int ok = 0, failed = 0, orphans = 0;
+
+            foreach (string file in files)
+            {
+                string output = Path.Combine(_scratch, "slim-" + Path.GetFileName(file));
+                try
+                {
+                    // Slim asserts internally that the body is unchanged and that
+                    // every picture reference still resolves; a throw here IS the
+                    // failure, which is why there is so little to assert outside it.
+                    var result = DocxPackage.Slim(file, output);
+                    totalBefore += result.BytesBefore;
+                    totalAfter += result.BytesAfter;
+                    orphans += result.OrphanParts.Count;
+                    ok++;
+
+                    Console.WriteLine($"   {Path.GetFileName(file),-46}" +
+                                      $"{result.BytesBefore / 1048576.0,7:0.0}M ->{result.BytesAfter / 1048576.0,7:0.0}M" +
+                                      $"{result.PercentSaved,6:0}%  " +
+                                      (result.KeptOriginal
+                                          ? "already clean, kept as-is"
+                                          : $"{result.DuplicatesRemoved} dup") +
+                                      (result.OrphanParts.Count > 0 ? $", {result.OrphanParts.Count} orphan" : ""));
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    Console.WriteLine($"   {Path.GetFileName(file),-46}FAILED: {ex.Message}");
+                }
+                finally
+                {
+                    try { if (File.Exists(output)) File.Delete(output); } catch { }
+                }
+            }
+
+            Check($"all {files.Count} archived documents slim without altering the body",
+                  failed == 0, failed + " failed");
+            Console.WriteLine($"   total {totalBefore / 1048576.0:0.0}M -> {totalAfter / 1048576.0:0.0}M " +
+                              $"({100 * (1 - (double)totalAfter / Math.Max(totalBefore, 1)):0}% smaller), " +
+                              $"{orphans} orphan parts seen across {ok} documents");
+        }
+
+        /// <summary>
+        /// Downsampling changes a part's extension, which means rewriting the
+        /// relationship targets and [Content_Types].xml, and keeping names unique
+        /// where a stem already exists under two extensions. That plumbing is where
+        /// a bug would silently lose a photo, and it is testable without an image
+        /// codec — so it is tested here, on every real document, with a stub
+        /// re-encoder standing in for GDI+.
+        ///
+        /// What this does NOT cover is the encoding itself: resampling quality and
+        /// alpha detection need System.Drawing and therefore a Windows run.
+        /// </summary>
+        static void DownsamplingRewiresThePackage()
+        {
+            Section("Downsampling rewires the package without losing a picture");
+
+            var documents = new List<string> { Draft };
+            string master = Path.Combine(_root, "Template", "MCAA-Newsletter-MASTER.docx");
+            if (File.Exists(master)) documents.Add(master);
+            string published = Path.Combine(_root, "Published");
+            if (Directory.Exists(published))
+                documents.AddRange(Directory.GetFiles(published, "*.docx")
+                                            .Where(f => !Path.GetFileName(f).StartsWith("~$"))
+                                            .OrderBy(f => f));
+
+            int collisionsResolved = 0, converted = 0, broken = 0;
+
+            try
+            {
+                foreach (string document in documents)
+                {
+                    // Stand-in for the real re-encoder: hands back a genuine JPEG
+                    // lifted from the same document, so the output is a valid image
+                    // and every convertible part changes extension.
+                    byte[] stand_in = SmallestJpeg(document);
+                    if (stand_in == null) continue;
+
+                    // Each reduced part must come out DISTINCT, or the de-dupe
+                    // collapses them all onto one and no name ever collides — which
+                    // would leave the guard untested while looking like it passed.
+                    // Trailing bytes after the JPEG end marker are ignored by
+                    // readers, so this stays a valid image.
+                    int nonce = 0;
+                    DocxPackage.Reduce = (byte[] raw, string extension, int maxEdge, int quality,
+                                          int minPhoto, out string newExtension) =>
+                    {
+                        newExtension = ".jpeg";
+                        string e = (extension ?? "").ToLowerInvariant();
+                        bool convertible = e == ".png" || e == ".jpg" || e == ".jpeg" ||
+                                           e == ".bmp" || e == ".tif" || e == ".tiff";
+                        if (!convertible || raw.Length <= stand_in.Length + 64) return null;
+
+                        var distinct = new byte[stand_in.Length + (nonce++ % 61) + 1];
+                        Buffer.BlockCopy(stand_in, 0, distinct, 0, stand_in.Length);
+                        return distinct;
+                    };
+
+                    string output = Path.Combine(_scratch, "down-" + Path.GetFileName(document));
+                    try
+                    {
+                        var before = ReadParts(document);
+                        DocxPackage.Slim(document, output, downsample: true);
+                        var after = ReadParts(output);
+
+                        // Nothing in the body may move, extensions or not.
+                        if (VisibleText(before["word/document.xml"]) != VisibleText(after["word/document.xml"]))
+                        { broken++; Console.WriteLine($"   text changed in {Path.GetFileName(document)}"); }
+
+                        if (!Extents(before["word/document.xml"]).SequenceEqual(Extents(after["word/document.xml"])))
+                        { broken++; Console.WriteLine($"   boxes moved in {Path.GetFileName(document)}"); }
+
+                        // Every reference must land on a part that exists.
+                        var present = new HashSet<string>(
+                            after.Keys.Where(k => k.StartsWith("word/media/"))
+                                      .Select(k => k.Substring("word/media/".Length)),
+                            StringComparer.OrdinalIgnoreCase);
+
+                        foreach (var key in after.Keys.Where(k => k.EndsWith(".rels")))
+                            foreach (Match m in Regex.Matches(Encoding.UTF8.GetString(after[key]),
+                                                              @"Target=""(?:\.\./)?media/([^""]+)"""))
+                                if (!present.Contains(m.Groups[1].Value))
+                                {
+                                    broken++;
+                                    Console.WriteLine($"   dangling {m.Groups[1].Value} in {Path.GetFileName(document)}");
+                                }
+
+                        // Content types must cover every extension actually present.
+                        string types = Encoding.UTF8.GetString(after["[Content_Types].xml"]);
+                        foreach (string ext in present.Select(p => Path.GetExtension(p).TrimStart('.')).Distinct())
+                            if (types.IndexOf("Extension=\"" + ext + "\"", StringComparison.OrdinalIgnoreCase) < 0)
+                            {
+                                broken++;
+                                Console.WriteLine($"   {ext} uncovered in {Path.GetFileName(document)}");
+                            }
+
+                        collisionsResolved += present.Count(p => Regex.IsMatch(p, @"-\d+\.jpeg$"));
+                        converted += present.Count(p => p.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase));
+                    }
+                    catch (Exception ex)
+                    {
+                        broken++;
+                        Console.WriteLine($"   {Path.GetFileName(document)} FAILED: {ex.Message}");
+                    }
+                    finally
+                    {
+                        try { if (File.Exists(output)) File.Delete(output); } catch { }
+                    }
+                }
+            }
+            finally { DocxPackage.Reduce = null; }
+
+            Console.WriteLine($"   {documents.Count} documents, {converted} parts ended as .jpeg, " +
+                              $"{collisionsResolved} name collisions resolved");
+
+            Check("no document was broken by re-encoding", broken == 0, broken + " problems");
+            Check("the name-collision guard was actually exercised", collisionsResolved > 0,
+                  "no collisions occurred, so the guard is unproven");
+        }
+
+        /// <summary>Smallest real JPEG in the package, used as a stand-in re-encode.</summary>
+        static byte[] SmallestJpeg(string path)
+        {
+            var parts = ReadParts(path);
+            return parts.Where(p => p.Key.StartsWith("word/media/") &&
+                                    p.Value.Length > 2 && p.Value[0] == 0xFF && p.Value[1] == 0xD8)
+                        .OrderBy(p => p.Value.Length)
+                        .Select(p => p.Value)
+                        .FirstOrDefault();
+        }
+
+        static void ZipCommentRoundTrips()
+        {
+            Section("Processed-stamp survives a write and is readable back");
+
+            string file = Path.Combine(_scratch, "stamp.docx");
+            DocxPackage.Slim(Draft, file);
+
+            string stamp = ZipComment.Read(file);
+            Check("stamp is written and reads back",
+                  !string.IsNullOrEmpty(stamp) && stamp.StartsWith("MCAA-shrink"), stamp ?? "(none)");
+
+            // A stamped file must still be a valid package.
+            using (var zip = ZipFile.OpenRead(file))
+                Check("stamped file is still a readable package",
+                      zip.Entries.Any(e => e.FullName == "word/document.xml"), "");
+
+            try { File.Delete(file); } catch { }
+        }
+
+        #endregion
+
+        #region helpers
+
+        static string Draft => Path.Combine(_root, "Drafts", "MCAA-Newsletter-DRAFT.docx");
+
+        static bool Near(double a, double b) => Math.Abs(a - b) < 0.005;
+
+        static bool Same(byte[] a, byte[] b) =>
+            a.Length == b.Length && a.SequenceEqual(b);
+
+        static Dictionary<string, byte[]> ReadParts(string path)
+        {
+            var parts = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+            using (var zip = ZipFile.OpenRead(path))
+                foreach (var entry in zip.Entries)
+                {
+                    if (string.IsNullOrEmpty(entry.Name) && entry.Length == 0) continue;
+                    using (var s = entry.Open())
+                    using (var m = new MemoryStream())
+                    {
+                        s.CopyTo(m);
+                        parts[entry.FullName] = m.ToArray();
+                    }
+                }
+            return parts;
+        }
+
+        /// <summary>Everything between the tags — what actually appears on the page.</summary>
+        static string VisibleText(byte[] documentXml) =>
+            Regex.Replace(Encoding.UTF8.GetString(documentXml), "<[^>]*>", "");
+
+        /// <summary>Every picture box extent, in document order.</summary>
+        static List<Tuple<long, long>> Extents(byte[] documentXml)
+        {
+            var list = new List<Tuple<long, long>>();
+            foreach (Match m in Regex.Matches(Encoding.UTF8.GetString(documentXml),
+                                              @"<a:ext cx=""(\d+)"" cy=""(\d+)"""))
+                list.Add(Tuple.Create(long.Parse(m.Groups[1].Value), long.Parse(m.Groups[2].Value)));
+            return list;
+        }
+
+        static void Section(string title)
+        {
+            Console.WriteLine();
+            Console.WriteLine("== " + title + " ==");
+        }
+
+        static void Check(string what, bool passed, string detail)
+        {
+            _checks++;
+            if (!passed) _failures++;
+            Console.WriteLine($"   [{(passed ? "ok" : "FAIL")}] {what}" +
+                              (passed || string.IsNullOrEmpty(detail) ? "" : "  -> " + detail));
+        }
+
+        #endregion
+    }
+}
