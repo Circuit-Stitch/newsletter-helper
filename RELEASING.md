@@ -90,10 +90,15 @@ CN=Circuit Stitch, O=Circuit Stitch, L=West Sacramento, S=California, C=US
 
 Under Trusted Signing the Subject comes from the account's **Identity
 Validation**, not from the individual certificate profile — so a new profile
-under the existing Circuit Stitch account keeps this string, and the same value
-must also appear in `MCAANewsletter.appinstaller`. **Check the exact Subject in
-the Azure portal before the first signed run** and correct both files if it
-differs by so much as a space.
+under the existing Circuit Stitch account keeps this string. **Check the exact
+Subject in the Azure portal before the first signed run.** If it differs by so
+much as a space, **three** files need the same edit:
+
+| File | What to change |
+|---|---|
+| `App/MCAANewsletter/msix/AppxManifest.xml` | `Publisher=` — signing fails without this |
+| `App/MCAANewsletter/msix/MCAANewsletter.appinstaller` | `Publisher=` on `<MainPackage>` |
+| `.github/release-body.md` | the "signed by Circuit Stitch" line — cosmetic, and the easy one to miss |
 
 Consequence worth knowing: Windows shows **"Circuit Stitch"** as the publisher on
 the install prompt, even though the app is branded for the art association.
