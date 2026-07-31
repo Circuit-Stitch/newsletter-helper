@@ -120,6 +120,20 @@ assignment → **Artifact Signing Certificate Profile Signer** → assign to thi
 registration. Without it, `azure/login` succeeds and the signing step then fails
 with an authorization error, which reads misleadingly like a bad credential.
 
+On the Members tab, **type the app registration's name** — the picker shows only
+a couple of default users until you search, and never enumerates service
+principals. If nothing matches, paste the **Application (client) ID** instead. If
+that also fails, the account here is a directory **guest**, and Entra's default
+guest access restrictions can stop the picker enumerating objects that plainly
+exist. The CLI assigns by ID and needs no directory search:
+
+```bash
+az role assignment create \
+  --role "Artifact Signing Certificate Profile Signer" \
+  --assignee <APPLICATION_CLIENT_ID> \
+  --scope "/subscriptions/<SUB_ID>/resourceGroups/<RG>/providers/Microsoft.CodeSigning/codeSigningAccounts/<ACCOUNT>"
+```
+
 The three IDs for the variables table: `AZURE_CLIENT_ID` is the registration's
 **Application (client) ID**, `AZURE_TENANT_ID` its **Directory (tenant) ID**, and
 `AZURE_SUBSCRIPTION_ID` is the subscription holding the Artifact Signing account.
