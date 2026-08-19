@@ -8,16 +8,23 @@ for a new version each time it starts and updates itself in the background.
 Windows installs the app and, from then on, keeps it up to date.
 
 The same file is attached below and installing from it also works — both copies
-point at the same stable update URL. Use the link above where you can: it is
+point at the same stable update URL. Use the link above where you can; it is
 served as `application/appinstaller`, so Windows hands it straight to App
 Installer instead of leaving it in your Downloads folder.
 
-Don't install from the `.msix` on its own. It installs the app once but does not
-wire up updates.
+Avoid installing from the `.msix` on its own. It installs the app once but does
+not automatically keep the app updated like the .appinstaller file does.
 
 After installing, open **MCAA Newsletter** from the Start menu. The first launch
-asks which folder the newsletters are in — point it at the folder holding
-`Template`, `Drafts` and `Published`.
+asks which folder the newsletters are in. Point it at a folder holding the
+newsletter files:
+
+```
+MyNewsletters/        <- point the app here
+├── Template/         the document each issue starts from
+├── Drafts/           the issue being worked on
+└── Published/        finished issues
+```
 
 The package is signed by Circuit Stitch, so Windows installs it without a
 security warning.

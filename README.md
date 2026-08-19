@@ -28,8 +28,17 @@ The package is signed by Circuit Stitch through Azure Artifact Signing, so
 Windows installs it without a SmartScreen warning.
 
 Then open **MCAA Newsletter** from the Start menu. The first launch asks where
-the newsletters are. Point it at the folder holding `Template`, `Drafts` and
-`Published`.
+the newsletters are. Point it at the folder holding the three subfolders:
+
+```
+MyNewsletters/        <- point the app here
+├── Template/         the document each issue starts from
+├── Drafts/           the issue being worked on
+└── Published/        finished issues
+```
+
+Call that top folder anything, and keep it anywhere. The
+[full layout](#the-newsletter-folder) below shows the files that end up in it.
 
 Updates take care of themselves. Windows checks for a new version each time the
 app starts and installs it in the background.
@@ -71,6 +80,52 @@ it, and can optionally promote that slimmed document to the new master.
 The app stores nothing between runs. Every status you see is read off the
 filesystem on each refresh, so it cannot disagree with what is actually in the
 folder.
+
+## The newsletter folder
+
+Everything the app touches lives in one folder. You choose where it sits and what
+it is called.
+
+```
+MyNewsletters/
+│
+├── Template/
+│   ├── MCAA-Newsletter-MASTER.docx             what every issue starts from
+│   └── MCAA-Newsletter-MASTER (previous).docx  safety copy
+│
+├── Drafts/
+│   ├── 2026 August MCAA Newsletter-DRAFT.docx  step 1 makes this
+│   ├── 2026 August MCAA Newsletter-DRAFT.pdf   step 2 makes this
+│   └── 2026 August MCAA Newsletter-DRAFT (before photo fix).docx
+│
+└── Published/
+    ├── 2026 July MCAA Newsletter.docx
+    ├── 2026 July MCAA Newsletter.pdf
+    ├── 2026 August MCAA Newsletter.docx        step 3 makes these two
+    └── 2026 August MCAA Newsletter.pdf
+```
+
+The two files in parentheses are written only when they are needed.
+`(previous)` appears when you promote a slimmed document to master, so the old
+master is never simply gone. `(before photo fix)` appears when photo repair
+runs, so the unrepaired draft is still there.
+
+Every name above is a setting:
+
+| Piece | Default |
+|---|---|
+| Subfolder names | `Template`, `Drafts`, `Published` |
+| Master file | `MCAA-Newsletter-MASTER.docx` |
+| Per-issue pattern | `{year} {month} MCAA Newsletter` |
+| Draft ending | `-DRAFT` |
+
+The pattern has to keep both `{year}` and `{month}`, and the settings window
+refuses to save one that drops either. Without them every issue resolves to the
+same file name and each month overwrites the last.
+
+Month names come from the invariant culture. A machine set to another locale
+still writes `August`, so the archive cannot end up with two spellings of the
+same month.
 
 ## What the document operations do
 
