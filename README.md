@@ -161,40 +161,17 @@ input and output are stripped of revision IDs and compared — they must be
 identical — and every picture reference is confirmed to still resolve. If either
 check fails the file is discarded and nothing is overwritten.
 
-## Scope
+## Project Scope
 
 This was written for one newsletter and one person's workflow, so the app's
 folder layout and file naming are configurable but its shape is not. The two
 document operations are general: any Word document written by Word 2010 carries
 the same duplicated image bytes.
 
-## App Development
+## See Also
 
-### Building From Source
-
-Requires the .NET SDK.
-
-```
-dotnet build "App/MCAANewsletter/MCAANewsletter.csproj" -c Release
-```
-
-Output lands in `App/MCAANewsletter/bin/Release/MCAA Newsletter.exe`. It has no
-dependencies beyond the framework, so that one file is the whole program.
-
-The project pulls `Microsoft.NETFramework.ReferenceAssemblies`, so it also
-compiles on macOS and Linux. The resulting `.exe` still only runs on Windows.
-
-A locally built `.exe` is unsigned, so SmartScreen warns on first run. The
-released MSIX is signed and does not.
-
-### Packaging
-
-The app ships as an MSIX, signed by Circuit Stitch through Azure Artifact
-Signing, with a companion `.appinstaller` that keeps installed copies up to
-date. [RELEASING.md](RELEASING.md) covers how a release is built and published.
-
-### See Also
-
+- [DEVELOPING.md](DEVELOPING.md) — building the app from source, and how the
+  released package is put together.
 - [App/README.md](App/README.md) — how the app finds its folder, what settings
   it validates, and the full test corpus with expected numbers.
 - [RELEASING.md](RELEASING.md) — how a release is built, signed and published.
