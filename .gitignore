@@ -7,8 +7,14 @@
 
 # The newsletters themselves live outside this repo. If someone points a
 # working copy at a real newsletter folder, do not let the issues back in.
+#
+# Template/ holds the master document. It is deliberately not version
+# controlled, so the copy on disk is the only reference the tests have - see
+# App/README.md. Ignoring it stops a `git add -A` from committing the master
+# to a public repo.
 Drafts/
 Published/
+Template/
 
 # .NET build output for the Windows app
 App/**/bin/

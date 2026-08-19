@@ -4,13 +4,14 @@
   csproj X.Y.Z -> X.Y.Z.0) and @BASEURL@ (the AZURE_DOWNLOAD_BASE_URL repo
   variable, no trailing slash), then uploads this alongside the signed .msix.
 
-  Why not GitHub Releases: this repo is private, and App Installer fetches these
-  URLs anonymously - it is a Windows component with no GitHub credentials, so a
-  private repo's release assets 404 for it. The packages are therefore mirrored
-  to public-read Azure Blob Storage and @BASEURL@ points there. Hosting them
-  outside GitHub costs nothing in trust: the anchor is the .msix's Authenticode
-  signature, which Windows verifies before installing regardless of where the
-  bytes came from.
+  Why @BASEURL@ points at Azure Blob Storage rather than GitHub Releases: App
+  Installer fetches these URLs anonymously and needs them direct and stable.
+  GitHub's /releases/latest/download/ redirects twice to an expiring signed URL
+  and serves application/octet-stream; the blob answers 200 with
+  application/appinstaller. This URL is baked into every installed copy, so it
+  has to keep working. Hosting outside GitHub costs nothing in trust: the anchor
+  is the .msix's Authenticode signature, which Windows verifies before
+  installing regardless of where the bytes came from.
 
   Both blob names are STABLE and overwritten each release, so this URL keeps
   working the way GitHub's .../releases/latest/download/ did. The upload runs on

@@ -6,13 +6,28 @@ built-in App Installer does the updating: once she has installed from the
 version in the background. **Publishing the draft GitHub Release is the entire
 release action** — there is nothing to tell her and nothing for her to click.
 
-The packages are served from **public Azure Blob Storage**, not GitHub Releases,
-because this repo is private. App Installer is a Windows component with no GitHub
-credentials and fetches update URLs anonymously, so a private repo's release
-assets 404 for it — the update check *and* the first install would both fail.
-Hosting the bytes elsewhere costs nothing in trust: the anchor is the `.msix`'s
+The packages are served from **public Azure Blob Storage**, not GitHub Releases.
+App Installer needs a direct, stable URL served with the right content type, and
+a GitHub Release asset is neither:
+
+| | GitHub Release asset | Azure blob |
+|---|---|---|
+| Request | two 302s, ending at an expiring signed URL | one 200 |
+| `Content-Type` | `application/octet-stream` | `application/appinstaller` |
+| `Content-Disposition` | `attachment` | none |
+
+A browser handed `octet-stream` with `attachment` saves the file instead of
+launching App Installer, which turns a one-click install into a download she has
+to find and open. The blob URL is also the one baked into every installed copy,
+so it has to keep working regardless.
+
+This repo is public, so the release assets *are* downloadable anonymously and an
+install from them does work — the `.appinstaller` file carries the blob URL, so
+updates still arrive. The blob link is simply the better one to hand out.
+
+Hosting the bytes off GitHub costs nothing in trust: the anchor is the `.msix`'s
 Authenticode signature, which Windows verifies before installing regardless of
-where it was downloaded from. Making the repo public would be the alternative.
+where it was downloaded from.
 
 So a release has two stages, and the GitHub Release is still the gate:
 

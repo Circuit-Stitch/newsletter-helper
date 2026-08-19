@@ -1,10 +1,18 @@
 # Mirror a published release's packages to public Azure Blob Storage.
 #
-# This repo is PRIVATE, and App Installer fetches update URLs anonymously - it is
-# a Windows component with no GitHub credentials, so a private repo's release
-# assets 404 for it. Both the update check and the very first install would fail.
+# App Installer fetches these URLs anonymously and needs them direct and stable.
+# A GitHub Release asset is neither: /releases/latest/download/ answers with two
+# 302s ending at an expiring signed URL, and serves the file as Content-Type
+# application/octet-stream with Content-Disposition: attachment. App Installer
+# wants application/appinstaller, and a browser handed octet-stream saves the
+# file rather than launching the installer. The blob is a single 200 with the
+# right content type, set explicitly below. It is also the URL already baked
+# into every installed copy, so it has to keep working.
+#
 # So the GitHub Release stays the archive and the review gate, and the blob
-# container is the distribution channel.
+# container is the distribution channel. The repo being public does not change
+# that - the release assets are reachable now, but they are still the wrong
+# shape for App Installer.
 #
 # Trust is unaffected by moving the bytes off GitHub: the anchor is the .msix's
 # Authenticode signature from Artifact Signing, which Windows verifies before
