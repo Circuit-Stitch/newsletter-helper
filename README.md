@@ -1,11 +1,11 @@
 # MCAA Newsletter
 
 A small Windows app that produces the Mendocino County Art Association's monthly
-newsletter. One window, three numbered steps: 
+newsletter. One window, three numbered steps:
 
-1. **Start the monthly issue**: this creates a copy from the current newsletter template and places it in the Drafts folder with a dated file name.
-2. **Check the photos make the PDF**: ensures duplicate images are removed, applies image crops and compresses the images for the final PDF output.
-3. **Publish**: moves the draft copy into the Archive and renames the PDF copy to drop the "DRAFT" text so it's safely put away and ready for sending out to your readers.
+1. **Start the monthly issue**: copies the newsletter template into the `Drafts` folder under a dated file name, ready for you to write in.
+2. **Check the photos and make the PDF**: finds photos that have been squashed or stretched out of shape, offers to put them right, then makes the PDF next to the draft.
+3. **Publish**: copies the finished PDF into the `Published` folder without the "DRAFT" in its name, ready for sending out to your readers. A slimmed-down copy of the Word document goes with it, and your draft stays where it is.
 
 <p align="center">
   <a href="https://circuitstitchpackages.blob.core.windows.net/packages/MCAANewsletter.appinstaller">
@@ -20,6 +20,9 @@ newsletter. One window, three numbered steps:
 ## Installing
 
 [Download the MCAA Newsletter installer](https://circuitstitchpackages.blob.core.windows.net/packages/MCAANewsletter.appinstaller) and open it. Windows hands the file to App Installer and installs the app.
+
+The app is signed by Circuit Stitch, so Windows installs it without stopping to
+warn you about it.
 
 The button and link above always serve the current version. The same file is attached to every
 [release](https://github.com/Circuit-Stitch/newsletter-helper/releases) if you
@@ -52,7 +55,7 @@ folder once.
 | Microsoft Word | Needed for step 2 only. Tested against Word 2010 |
 | .NET | None to install. The app targets .NET Framework 4.8, which ships with Windows |
 
-## The three steps
+## The Three Steps
 
 Exactly one button is enabled at a time.
 
@@ -79,7 +82,7 @@ The app stores nothing between runs. Every status you see is read off the
 filesystem on each refresh, so it cannot disagree with what is actually in the
 folder.
 
-## The newsletter folder
+## The Newsletter Folder
 
 Everything the app touches lives in one folder. You choose where it sits and what
 it is called.
@@ -125,7 +128,7 @@ Month names come from the invariant culture. A machine set to another locale
 still writes `August`, so the archive cannot end up with two spellings of the
 same month.
 
-## What the document operations do
+## What the Document Operations Do
 
 Both work directly on the `.docx` zip package. Neither goes through Word.
 
@@ -158,7 +161,6 @@ input and output are stripped of revision IDs and compared — they must be
 identical — and every picture reference is confirmed to still resolve. If either
 check fails the file is discarded and nothing is overwritten.
 
-
 ## Scope
 
 This was written for one newsletter and one person's workflow, so the app's
@@ -185,13 +187,13 @@ compiles on macOS and Linux. The resulting `.exe` still only runs on Windows.
 A locally built `.exe` is unsigned, so SmartScreen warns on first run. The
 released MSIX is signed and does not.
 
-
 ### Packaging
 
-The package is signed by Circuit Stitch through Azure Artifact Signing, so
-Windows installs it without a SmartScreen warning.
+The app ships as an MSIX, signed by Circuit Stitch through Azure Artifact
+Signing, with a companion `.appinstaller` that keeps installed copies up to
+date. [RELEASING.md](RELEASING.md) covers how a release is built and published.
 
-### Other Files
+### See Also
 
 - [App/README.md](App/README.md) — how the app finds its folder, what settings
   it validates, and the full test corpus with expected numbers.
@@ -199,7 +201,7 @@ Windows installs it without a SmartScreen warning.
 - [Scripts/README.md](Scripts/README.md) — the Python tools this app replaced.
   Three were one-time migration steps, kept as the record of what was done to
   the archive. The fourth still rebuilds the workflow diagram.
-  
+
 ## License
 
 Source code is covered under the [MIT License](LICENSE). The newsletters themselves are not part of this repository and
