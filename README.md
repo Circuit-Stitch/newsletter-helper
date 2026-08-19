@@ -1,8 +1,11 @@
 # MCAA Newsletter
 
 A small Windows app that produces the Mendocino County Art Association's monthly
-newsletter. One window, three numbered steps: start the issue, check the photos
-and make the PDF, publish.
+newsletter. One window, three numbered steps: 
+
+1. **Start the monthly issue**: this creates a copy from the current newsletter template and places it in the Drafts folder with a dated file name.
+2. **Check the photos make the PDF**: ensures duplicate images are removed, applies image crops and compresses the images for the final PDF output.
+3. **Publish**: moves the draft copy into the Archive and renames the PDF copy to drop the "DRAFT" text so it's safely put away and ready for sending out to your readers.
 
 <p align="center">
   <a href="https://circuitstitchpackages.blob.core.windows.net/packages/MCAANewsletter.appinstaller">
@@ -16,16 +19,11 @@ and make the PDF, publish.
 
 ## Installing
 
-Click the button. Windows hands the file to App Installer and installs the app.
-If your browser saves `MCAANewsletter.appinstaller` instead, open it from your
-Downloads folder.
+[Download the MCAA Newsletter installer](https://circuitstitchpackages.blob.core.windows.net/packages/MCAANewsletter.appinstaller) and open it. Windows hands the file to App Installer and installs the app.
 
-The button always serves the current version. The same file is attached to every
+The button and link above always serve the current version. The same file is attached to every
 [release](https://github.com/Circuit-Stitch/newsletter-helper/releases) if you
 would rather download it from there.
-
-The package is signed by Circuit Stitch through Azure Artifact Signing, so
-Windows installs it without a SmartScreen warning.
 
 Then open **MCAA Newsletter** from the Start menu. The first launch asks where
 the newsletters are. Point it at the folder holding the three subfolders:
@@ -160,7 +158,17 @@ input and output are stripped of revision IDs and compared — they must be
 identical — and every picture reference is confirmed to still resolve. If either
 check fails the file is discarded and nothing is overwritten.
 
-## Building from source
+
+## Scope
+
+This was written for one newsletter and one person's workflow, so the app's
+folder layout and file naming are configurable but its shape is not. The two
+document operations are general: any Word document written by Word 2010 carries
+the same duplicated image bytes.
+
+## App Development
+
+### Building From Source
 
 Requires the .NET SDK.
 
@@ -177,19 +185,13 @@ compiles on macOS and Linux. The resulting `.exe` still only runs on Windows.
 A locally built `.exe` is unsigned, so SmartScreen warns on first run. The
 released MSIX is signed and does not.
 
-## Scope
 
-This was written for one newsletter and one person's workflow, so the app's
-folder layout and file naming are configurable but its shape is not. The two
-document operations are general: any Word document written by Word 2010 carries
-the same duplicated image bytes.
+### Packaging
 
-## License
+The package is signed by Circuit Stitch through Azure Artifact Signing, so
+Windows installs it without a SmartScreen warning.
 
-[MIT](LICENSE). The newsletters themselves are not part of this repository and
-are not covered by it.
-
-## More
+### Other Files
 
 - [App/README.md](App/README.md) — how the app finds its folder, what settings
   it validates, and the full test corpus with expected numbers.
@@ -197,3 +199,9 @@ are not covered by it.
 - [Scripts/README.md](Scripts/README.md) — the Python tools this app replaced.
   Three were one-time migration steps, kept as the record of what was done to
   the archive. The fourth still rebuilds the workflow diagram.
+  
+## License
+
+Source code is covered under the [MIT License](LICENSE). The newsletters themselves are not part of this repository and
+are not covered by it.
+
